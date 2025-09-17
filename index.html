@@ -17,10 +17,18 @@
 <body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen">
     <!-- Header -->
     <div class="bg-green-600 dark:bg-green-700 text-white p-4 shadow-lg">
-        <h1 class="text-2xl font-bold text-center">Cricket Manager</h1>
-        <div class="text-center mt-2">
-            <span class="text-sm">Local Club Level</span> | 
-            <span class="text-sm">Budget: $<span id="budget">50000</span></span>
+        <div class="flex justify-between items-center">
+            <button onclick="showResetConfirmation()" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                🔄 Reset Game
+            </button>
+            <div class="flex-1 text-center">
+                <h1 class="text-2xl font-bold">Cricket Manager</h1>
+                <div class="mt-2">
+                    <span class="text-sm">Local Club Level</span> | 
+                    <span class="text-sm">Budget: $<span id="budget">50000</span></span>
+                </div>
+            </div>
+            <div class="w-20"></div> <!-- Spacer for centering -->
         </div>
     </div>
 
@@ -1690,6 +1698,9 @@
             // Update player statistics for both teams
             updatePlayerStatsAfterMatch(team1Players, team1Score, team1Score > team2Score);
             updatePlayerStatsAfterMatch(team2Players, team2Score, team2Score > team1Score);
+            
+            // Auto-save after match simulation
+            autoSave();
             
             return {
                 team1: team1.name || 'Your Team',
@@ -3722,20 +3733,7 @@
             displayPlayers();
         }
 
-        // Initialize game
-        function initGame() {
-            gameState.players = generateInitialRoster();
-            
-            // Set first player as captain by default
-            if (gameState.players.length > 0) {
-                gameState.players[0].isCaptain = true;
-            }
-            
-            displayPlayers();
-            initializeCompetition('local');
-            updatePlayerSelector();
-            scheduleNextMatch();
-        }
+
 
         // TRAINING SYSTEM FUNCTIONS
         
@@ -4148,6 +4146,9 @@
             
             // Update UI
             showTrainingPanel(player);
+            
+            // Auto-save after training purchase
+            autoSave();
         }
         
         // Calculate training improvement amount
@@ -4408,6 +4409,284 @@
         // Initialize training system on load
         function initializeTrainingSystem() {
             populateTrainingSelector();
+        }
+        
+        // LOCAL STORAGE SAVE/LOAD SYSTEM
+        
+        // Save game state to localStorage
+        function saveGameState() {
+            try {
+                // Create a comprehensive save data object
+                const saveData = {
+                    gameState: {
+                        budget: gameState.budget,
+                        level: gameState.level,
+                        teamName: gameState.teamName,
+                        players: gameState.players,
+                        currentFilter: gameState.currentFilter,
+                        currentCompetition: gameState.currentCompetition,
+                        competitions: gameState.competitions,
+                        leagueStandings: gameState.leagueStandings,
+                        recentResults: gameState.recentResults,
+                        fanBase: gameState.fanBase,
+                        totalIncome: gameState.totalIncome,
+                        winStreak: gameState.winStreak,
+                        lossStreak: gameState.lossStreak,
+                        // CRITICAL: Save AI teams with all their data
+                        aiTeams: gameState.aiTeams.map(team => ({
+                            name: team.name,
+                            level: team.level,
+                            players: team.players, // Full player roster
+                            gamesPlayed: team.gamesPlayed,
+                            wins: team.wins,
+                            losses: team.losses,
+                            points: team.points,
+                            netRunRate: team.netRunRate,
+                            budget: team.budget,
+                            isPlayer: team.isPlayer,
+                            fanBase: team.fanBase,
+                            totalIncome: team.totalIncome,
+                            winStreak: team.winStreak,
+                            lossStreak: team.lossStreak
+                        }))
+                    },
+                    matchState: {
+                        opponent: matchState.opponent ? {
+                            name: matchState.opponent.name,
+                            level: matchState.opponent.level,
+                            players: matchState.opponent.players,
+                            gamesPlayed: matchState.opponent.gamesPlayed,
+                            wins: matchState.opponent.wins,
+                            losses: matchState.opponent.losses,
+                            points: matchState.opponent.points,
+                            netRunRate: matchState.opponent.netRunRate,
+                            budget: matchState.opponent.budget,
+                            fanBase: matchState.opponent.fanBase,
+                            totalIncome: matchState.opponent.totalIncome,
+                            winStreak: matchState.opponent.winStreak,
+                            lossStreak: matchState.opponent.lossStreak
+                        } : null,
+                        isHomeGame: matchState.isHomeGame,
+                        pitchType: matchState.pitchType,
+                        weather: matchState.weather,
+                        selectedXI: matchState.selectedXI,
+                        opponentXI: matchState.opponentXI,
+                        roundNumber: matchState.roundNumber
+                    },
+                    version: '1.1' // Updated version for new save format
+                };
+                
+                localStorage.setItem('cricketManagerSave', JSON.stringify(saveData));
+                console.log('Game saved successfully with AI teams and league data');
+            } catch (error) {
+                console.error('Error saving game:', error);
+            }
+        }
+        
+        // Load game state from localStorage
+        function loadGameState() {
+            try {
+                const savedData = localStorage.getItem('cricketManagerSave');
+                if (savedData) {
+                    const parsed = JSON.parse(savedData);
+                    
+                    // Restore basic game state
+                    Object.assign(gameState, parsed.gameState);
+                    
+                    // CRITICAL: Reconstruct AI teams as proper AITeam objects
+                    if (parsed.gameState.aiTeams && Array.isArray(parsed.gameState.aiTeams)) {
+                        gameState.aiTeams = parsed.gameState.aiTeams.map(teamData => {
+                            // Create new AITeam instance
+                            const team = new AITeam(teamData.name, teamData.level);
+                            
+                            // Restore all the saved properties
+                            team.players = teamData.players || team.players;
+                            team.gamesPlayed = teamData.gamesPlayed || 0;
+                            team.wins = teamData.wins || 0;
+                            team.losses = teamData.losses || 0;
+                            team.points = teamData.points || 0;
+                            team.netRunRate = teamData.netRunRate || 0;
+                            team.budget = teamData.budget || team.budget;
+                            team.fanBase = teamData.fanBase || team.fanBase;
+                            team.totalIncome = teamData.totalIncome || 0;
+                            team.winStreak = teamData.winStreak || 0;
+                            team.lossStreak = teamData.lossStreak || 0;
+                            
+                            return team;
+                        });
+                    }
+                    
+                    // CRITICAL: Reconstruct matchState.opponent as AITeam if it exists
+                    if (parsed.matchState.opponent) {
+                        const opponentData = parsed.matchState.opponent;
+                        
+                        // Find the opponent in the loaded AI teams first
+                        let opponent = gameState.aiTeams.find(team => team.name === opponentData.name);
+                        
+                        if (!opponent) {
+                            // If not found, create new AITeam instance
+                            opponent = new AITeam(opponentData.name, opponentData.level);
+                            
+                            // Restore opponent properties
+                            opponent.players = opponentData.players || opponent.players;
+                            opponent.gamesPlayed = opponentData.gamesPlayed || 0;
+                            opponent.wins = opponentData.wins || 0;
+                            opponent.losses = opponentData.losses || 0;
+                            opponent.points = opponentData.points || 0;
+                            opponent.netRunRate = opponentData.netRunRate || 0;
+                            opponent.budget = opponentData.budget || opponent.budget;
+                            opponent.fanBase = opponentData.fanBase || opponent.fanBase;
+                            opponent.totalIncome = opponentData.totalIncome || 0;
+                            opponent.winStreak = opponentData.winStreak || 0;
+                            opponent.lossStreak = opponentData.lossStreak || 0;
+                        }
+                        
+                        matchState.opponent = opponent;
+                    }
+                    
+                    // Restore other match state properties
+                    matchState.isHomeGame = parsed.matchState.isHomeGame;
+                    matchState.pitchType = parsed.matchState.pitchType;
+                    matchState.weather = parsed.matchState.weather;
+                    matchState.selectedXI = parsed.matchState.selectedXI || [];
+                    matchState.opponentXI = parsed.matchState.opponentXI || [];
+                    matchState.roundNumber = parsed.matchState.roundNumber || 1;
+                    
+                    // Update UI elements
+                    document.getElementById('budget').textContent = gameState.budget;
+                    document.getElementById('team-name-input').value = gameState.teamName;
+                    
+                    // CRITICAL: Update competition titles and buttons but DON'T initialize new competition
+                    updateCompetitionButtons();
+                    updateCompetitionTitles();
+                    
+                    // Refresh all displays with loaded data
+                    displayPlayers();
+                    updateStandings();
+                    updateRecentResults();
+                    updatePlayerSelector();
+                    populateTrainingSelector();
+                    updateMatchDayReport();
+                    displayOpponentXI();
+                    
+                    console.log('Game loaded successfully with AI teams and league data');
+                    console.log(`Loaded ${gameState.aiTeams.length} AI teams`);
+                    console.log(`League standings has ${gameState.leagueStandings.length} teams`);
+                    console.log(`Recent results: ${gameState.recentResults.length} matches`);
+                    
+                    return true; // Successfully loaded
+                }
+            } catch (error) {
+                console.error('Error loading game:', error);
+                // If there's an error, clear corrupted save data
+                localStorage.removeItem('cricketManagerSave');
+            }
+            return false; // No save found or error
+        }
+        
+        // Update competition button states after loading
+        function updateCompetitionButtons() {
+            Object.keys(gameState.competitions).forEach(comp => {
+                const btn = document.getElementById(comp + '-btn');
+                if (gameState.competitions[comp].unlocked) {
+                    btn.disabled = false;
+                    btn.classList.remove('bg-gray-300', 'dark:bg-gray-600', 'text-gray-500', 'dark:text-gray-400', 'cursor-not-allowed');
+                    
+                    // Set appropriate color based on competition
+                    if (comp === 'local') {
+                        btn.classList.add('bg-green-500', 'text-white');
+                    } else if (comp === 'national') {
+                        btn.classList.add('bg-yellow-500', 'text-white');
+                    } else {
+                        btn.classList.add('bg-blue-500', 'text-white');
+                    }
+                }
+            });
+            
+            // CRITICAL: Don't call selectCompetition during load as it would overwrite loaded data
+            // Just update the UI to reflect the current competition
+            const currentBtn = document.getElementById(gameState.currentCompetition + '-btn');
+            if (currentBtn) {
+                currentBtn.classList.remove('bg-gray-300', 'dark:bg-gray-600', 'text-gray-500', 'dark:text-gray-400');
+                currentBtn.classList.add('bg-green-500', 'text-white');
+            }
+        }
+        
+        // Update competition titles after loading (separate from button selection)
+        function updateCompetitionTitles() {
+            const competitionNames = {
+                local: 'Local Cup',
+                national: 'National Cup', 
+                worldcup: 'World Cup',
+                test: 'Test World Series'
+            };
+            
+            document.getElementById('competition-title').textContent = competitionNames[gameState.currentCompetition];
+            document.getElementById('league-title').textContent = competitionNames[gameState.currentCompetition] + ' Standings';
+        }
+        
+        // Auto-save after important game events
+        function autoSave() {
+            saveGameState();
+        }
+        
+        // Clear all saved data and restart game
+        function resetGame() {
+            localStorage.removeItem('cricketManagerSave');
+            location.reload(); // Reload the page to restart completely
+        }
+        
+        // Show reset confirmation dialog
+        function showResetConfirmation() {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-sm w-full mx-4">
+                    <div class="text-center">
+                        <div class="text-4xl mb-4">⚠️</div>
+                        <h3 class="text-lg font-bold mb-4">Reset Game?</h3>
+                        <p class="text-gray-700 dark:text-gray-300 mb-6">
+                            This will permanently delete all your progress and start a completely new game.
+                        </p>
+                        <p class="text-sm text-red-600 dark:text-red-400 mb-4">
+                            This action cannot be undone!
+                        </p>
+                    </div>
+                    <div class="flex justify-center space-x-3">
+                        <button class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" onclick="this.closest('.fixed').remove()">
+                            Cancel
+                        </button>
+                        <button class="px-4 py-2 bg-red-500 text-white hover:bg-red-600 rounded" onclick="resetGame()">
+                            Reset Game
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        // Enhanced game initialization with save/load
+        function initGame() {
+            // Try to load saved game first
+            const gameLoaded = loadGameState();
+            
+            if (!gameLoaded) {
+                // No save found, start new game
+                gameState.players = generateInitialRoster();
+                
+                // Set first player as captain by default
+                if (gameState.players.length > 0) {
+                    gameState.players[0].isCaptain = true;
+                }
+                
+                displayPlayers();
+                initializeCompetition('local');
+                updatePlayerSelector();
+                scheduleNextMatch();
+                
+                // Save initial game state
+                autoSave();
+            }
         }
         
         // Start the game
