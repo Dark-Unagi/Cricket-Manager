@@ -103,6 +103,45 @@
                 </select>
             </div>
             
+            <!-- Training Overview Panel (Default View) -->
+            <div id="training-overview-panel" class="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 border">
+                <div class="text-center mb-6">
+                    <h3 class="text-xl font-bold text-green-600 dark:text-green-400 mb-2">🎯 Training in Progress</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Overview of all active training sessions</p>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Batting Training Overview -->
+                    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border">
+                        <h4 class="font-bold text-blue-600 dark:text-blue-400 mb-3 text-center">🏏 Batting Training</h4>
+                        <div id="batting-training-overview" class="space-y-2">
+                            <!-- Will be populated with active batting training -->
+                        </div>
+                    </div>
+                    
+                    <!-- Bowling Training Overview -->
+                    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border">
+                        <h4 class="font-bold text-red-600 dark:text-red-400 mb-3 text-center">⚾ Bowling Training</h4>
+                        <div id="bowling-training-overview" class="space-y-2">
+                            <!-- Will be populated with active bowling training -->
+                        </div>
+                    </div>
+                    
+                    <!-- Fielding & Specialist Training Overview -->
+                    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border">
+                        <h4 class="font-bold text-green-600 dark:text-green-400 mb-3 text-center">🥅 Fielding & Specialist</h4>
+                        <div id="fielding-training-overview" class="space-y-2">
+                            <!-- Will be populated with active fielding training -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="no-active-training" class="text-center text-gray-500 mt-6" style="display: none;">
+                    <p class="text-lg mb-2">No training sessions active</p>
+                    <p class="text-sm">Select a player above to start training</p>
+                </div>
+            </div>
+
             <!-- Selected Player Training Panel -->
             <div id="player-training-panel" class="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 border" style="display: none;">
                 <div class="flex justify-between items-start mb-4">
@@ -820,6 +859,11 @@
             // Show selected tab
             document.getElementById(tabName + '-tab').classList.add('active');
             event.target.classList.add('active');
+            
+            // CRITICAL: Reset training tab when switching tabs
+            if (tabName === 'training') {
+                resetTrainingTabToOverview();
+            }
         }
 
         // Filter players
@@ -1389,7 +1433,7 @@
                     <h4 class="text-lg font-bold mb-4 text-blue-600 dark:text-blue-400">${teamName} ${isFirstInnings ? '(1st Innings)' : '(2nd Innings)'}</h4>
                     
                     <!-- Batting Performance -->
-                    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4 ">
+                    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4 mx-auto w-3/4">
                         <h5 class="font-medium mb-3">Batting</h5>
                         <div class="space-y-1 font-mono text-sm">
             `;
@@ -1547,6 +1591,9 @@
             });
             displayPlayers();
             updatePlayerSelector();
+            
+            // CRITICAL: Update training dropdown immediately when captain changes
+            populateTrainingSelector();
         }
 
         // Set wicket keeper
@@ -1556,6 +1603,9 @@
             });
             displayPlayers();
             updatePlayerSelector();
+            
+            // CRITICAL: Update training dropdown immediately when WK changes
+            populateTrainingSelector();
         }
 
         // Schedule next match automatically (no user control)
@@ -1731,16 +1781,10 @@
             const allTeams = [gameState.teamName, ...gameState.aiTeams.map(t => t.name)];
             const allRoundMatches = generateRoundMatches(allTeams, matchState.roundNumber);
             
-            // Debug: Log the matches to see what's happening
-            console.log(`Round ${matchState.roundNumber} - All matches:`, allRoundMatches);
-            
             // Filter out the player's match (already played) and simulate the remaining AI vs AI matches
             const aiMatches = allRoundMatches.filter(match => 
                 match.team1 !== gameState.teamName && match.team2 !== gameState.teamName
             );
-            
-            // Debug: Log AI matches
-            console.log(`Round ${matchState.roundNumber} - AI matches only:`, aiMatches);
             
             // Simulate each AI vs AI match for this round
             aiMatches.forEach(match => {
@@ -1781,14 +1825,8 @@
                 }
             });
             
-            // Debug: Log how many AI results we're adding
-            console.log(`Round ${matchState.roundNumber} - Adding ${roundResults.length} AI match results`);
-            console.log(`Round ${matchState.roundNumber} - Total results before adding AI matches: ${gameState.recentResults.length}`);
-            
             // Add all results to recent results
             gameState.recentResults.push(...roundResults);
-            
-            console.log(`Round ${matchState.roundNumber} - Total results after adding AI matches: ${gameState.recentResults.length}`);
             
             // Update league standings for AI teams
             gameState.leagueStandings = gameState.leagueStandings.map(standing => {
@@ -2131,6 +2169,9 @@
                 showCustomAlert('Please select a team captain from the Roster tab!');
                 return;
             }
+            
+            // CRITICAL: Reset training tab to overview when match starts
+            resetTrainingTabToOverview();
             
             // Show live match details
             document.getElementById('live-match-details').style.display = 'block';
@@ -2665,7 +2706,7 @@
                             this.currentBowler.matchStats.emergencyBowler = true;
                         }
                         
-                        console.warn(`EMERGENCY: ${this.currentBowler.name} selected despite constraints - ${this.currentBowler.matchStats.oversBowled} overs already bowled`);
+
                     }
                 }
                 
@@ -3268,6 +3309,13 @@
                     // Update 50s and 100s
                     if (player.matchStats.runs >= 50) player.fifties++;
                     if (player.matchStats.runs >= 100) player.hundreds++;
+                    
+                    // FIXED: Update strike rate properly
+                    // Calculate career strike rate: (total runs / total balls faced) * 100
+                    // We need to track total balls faced across career
+                    if (!player.totalBallsFaced) player.totalBallsFaced = player.gamesPlayed * 30; // Estimate initial
+                    player.totalBallsFaced += player.matchStats.ballsFaced;
+                    player.strikeRate = Math.floor((player.totalRuns / player.totalBallsFaced) * 100);
                 }
                 
                 if (player.matchStats.ballsBowled > 0) {
@@ -3275,7 +3323,24 @@
                     const newEconomy = player.matchStats.runsConceded / Math.max(1, player.matchStats.oversBowled);
                     player.economyRate = (player.economyRate + newEconomy) / 2; // Average with previous
                     
+                    // FIXED: Update best bowling figures when performance is better
+                    if (player.matchStats.wicketsTaken > 0) {
+                        const currentBestWickets = parseInt(player.bestBowling.split('/')[0]);
+                        const currentBestRuns = parseInt(player.bestBowling.split('/')[1]);
+                        
+                        // Better bowling: more wickets, or same wickets with fewer runs
+                        const isBetterBowling = player.matchStats.wicketsTaken > currentBestWickets ||
+                            (player.matchStats.wicketsTaken === currentBestWickets && 
+                             player.matchStats.runsConceded < currentBestRuns);
+                        
+                        if (isBetterBowling) {
+                            player.bestBowling = `${player.matchStats.wicketsTaken}/${player.matchStats.runsConceded}`;
+                        }
+                    }
+                    
+                    // FIXED: Update 5-wicket and 10-wicket hauls
                     if (player.matchStats.wicketsTaken >= 5) player.fiveWicketHauls++;
+                    if (player.matchStats.wicketsTaken >= 10) player.tenWicketHauls++;
                 }
             });
             
@@ -3571,7 +3636,7 @@
                         <div class="flex gap-3 justify-center">
                             ${shouldAdvance ? 
                                 '<button onclick="advanceToNational()" class="px-6 py-3 bg-green-600 text-white hover:bg-green-700 rounded-lg font-medium">Next Level</button>' : 
-                                '<button onclick="startNewSeasonFromModal()" class="px-6 py-3 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium">New Season</button>'
+                                ''
                             }
                             <button onclick="this.closest(\'div.fixed\').remove()" class="px-6 py-3 bg-gray-500 text-white hover:bg-gray-600 rounded-lg font-medium">Close</button>
                         </div>
@@ -3680,7 +3745,12 @@
             
             selector.innerHTML = '<option value="">Choose a player...</option>' +
                 gameState.players.map((player, index) => {
-                    return `<option value="${index}">${player.name} - ${player.type} (Age: ${player.age})</option>`;
+                    // Add captain and wicket-keeper tags
+                    let playerTags = '';
+                    if (player.isCaptain) playerTags += ' (C)';
+                    if (player.isWicketKeeper) playerTags += ' (WK)';
+                    
+                    return `<option value="${index}">${player.name}${playerTags} - ${player.type} (Age: ${player.age})</option>`;
                 }).join('');
         }
         
@@ -3698,8 +3768,128 @@
             showTrainingPanel(player);
         }
         
-        // Show training panel for selected player
+        // BRILLIANT SOLUTION: Reset training tab to overview (your idea!)
+        function resetTrainingTabToOverview() {
+            // Hide individual player training panel
+            document.getElementById('player-training-panel').style.display = 'none';
+            
+            // Show overview panel
+            document.getElementById('training-overview-panel').style.display = 'block';
+            
+            // Reset player selector to default
+            const selector = document.getElementById('training-player-selector');
+            selector.value = '';
+            
+            // Update the training overview
+            updateTrainingOverview();
+        }
+        
+        // Update training overview with all active training
+        function updateTrainingOverview() {
+            // Clear all overview sections
+            document.getElementById('batting-training-overview').innerHTML = '';
+            document.getElementById('bowling-training-overview').innerHTML = '';
+            document.getElementById('fielding-training-overview').innerHTML = '';
+            
+            let totalActiveTraining = 0;
+            
+            // Skill category mapping
+            const skillCategories = {
+                'battingDefense': 'batting',
+                'battingAggression': 'batting', 
+                'battingConsistency': 'batting',
+                'bowlingDefense': 'bowling',
+                'bowlingAggression': 'bowling',
+                'bowlingConsistency': 'bowling',
+                'fieldingCatching': 'fielding',
+                'fieldingAgility': 'fielding',
+                'wicketKeeping': 'fielding',
+                'captaincy': 'fielding'
+            };
+            
+            const skillNames = {
+                'battingDefense': 'Defense',
+                'battingAggression': 'Aggression', 
+                'battingConsistency': 'Consistency',
+                'bowlingDefense': 'Defensive Bowling',
+                'bowlingAggression': 'Aggressive Bowling',
+                'bowlingConsistency': 'Bowling Consistency',
+                'fieldingCatching': 'Catching',
+                'fieldingAgility': 'Agility',
+                'wicketKeeping': 'Wicket-Keeping',
+                'captaincy': 'Captaincy'
+            };
+            
+            // Collect all active training by category
+            const trainingByCategory = { batting: [], bowling: [], fielding: [] };
+            
+            gameState.players.forEach(player => {
+                player.trainingQueue.forEach(training => {
+                    const category = skillCategories[training.skill];
+                    if (category) {
+                        trainingByCategory[category].push({
+                            playerName: player.name,
+                            skillName: skillNames[training.skill],
+                            gamesRemaining: training.gamesRemaining,
+                            skill: training.skill
+                        });
+                        totalActiveTraining++;
+                    }
+                });
+            });
+            
+            // Update each category
+            updateCategoryOverview('batting-training-overview', trainingByCategory.batting, 'No batting training active');
+            updateCategoryOverview('bowling-training-overview', trainingByCategory.bowling, 'No bowling training active');
+            updateCategoryOverview('fielding-training-overview', trainingByCategory.fielding, 'No fielding/specialist training active');
+            
+            // Show/hide "no training" message
+            const noTrainingDiv = document.getElementById('no-active-training');
+            if (totalActiveTraining === 0) {
+                noTrainingDiv.style.display = 'block';
+            } else {
+                noTrainingDiv.style.display = 'none';
+            }
+        }
+        
+        // Update individual category overview
+        function updateCategoryOverview(elementId, trainings, emptyMessage) {
+            const element = document.getElementById(elementId);
+            
+            if (trainings.length === 0) {
+                element.innerHTML = `
+                    <div class="text-center text-gray-500 text-sm py-2">
+                        ${emptyMessage}
+                    </div>
+                `;
+                return;
+            }
+            
+            element.innerHTML = trainings.map(training => `
+                <div class="bg-green-50 dark:bg-green-900 p-2 rounded border-l-4 border-green-400">
+                    <div class="font-medium text-sm">${training.playerName}</div>
+                    <div class="text-xs text-gray-600 dark:text-gray-400">${training.skillName}</div>
+                    <div class="text-xs text-green-600 dark:text-green-400 mt-1">
+                        ${training.gamesRemaining} games remaining
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        
+        // Show individual training panel (hide overview)
         function showTrainingPanel(player) {
+           /* console.log(`🎯 SHOWING TRAINING PANEL for ${player.name}`);
+            console.log(`   Current queue length: ${player.trainingQueue.length}`);
+            player.trainingQueue.forEach((item, index) => {
+                console.log(`   Queue item ${index}: ${item.skill} - ${item.gamesRemaining} games remaining`);
+            });
+            */
+
+            // Hide overview panel
+            document.getElementById('training-overview-panel').style.display = 'none';
+            
+            // Show individual player panel
             document.getElementById('player-training-panel').style.display = 'block';
             
             // Update player details
@@ -3709,6 +3899,7 @@
             document.getElementById('training-player-games').textContent = player.gamesPlayed;
             
             // Update active training queue
+           /* console.log(`🔄 CALLING updateTrainingQueue for ${player.name}`);*/
             updateTrainingQueue(player);
             
             // Update skill levels and costs
@@ -3724,7 +3915,11 @@
             } else {
                 bowlingSection.style.display = 'block';
             }
+            
+           /* console.log(`✅ TRAINING PANEL REFRESH COMPLETE for ${player.name}`);*/
         }
+        
+
         
         // Update training UI with current values
         function updateTrainingUI(player) {
@@ -3953,8 +4148,6 @@
             
             // Update UI
             showTrainingPanel(player);
-            
-            showCustomAlert(`${player.name} has started training! Progress will be visible after ${gamesUntilComplete} games.`);
         }
         
         // Calculate training improvement amount
@@ -3991,6 +4184,11 @@
             const queueSection = document.getElementById('training-queue-section');
             const queueList = document.getElementById('training-queue-list');
             
+            // CRITICAL: Always clear the queue list first
+            if (queueList) {
+                queueList.innerHTML = '';
+            }
+            
             if (player.trainingQueue.length === 0) {
                 queueSection.style.display = 'none';
                 return;
@@ -4011,7 +4209,7 @@
                 'captaincy': 'Captaincy'
             };
             
-            queueList.innerHTML = player.trainingQueue.map(training => {
+            const queueHTML = player.trainingQueue.map((training, index) => {
                 return `
                     <div class="flex justify-between items-center p-2 bg-green-50 dark:bg-green-900 rounded border">
                         <span class="font-medium">${skillNames[training.skill]}</span>
@@ -4021,6 +4219,8 @@
                     </div>
                 `;
             }).join('');
+            
+            queueList.innerHTML = queueHTML;
         }
         
         // Update specialist training sections
@@ -4050,12 +4250,40 @@
         
         // Process training queue after each game
         function processTrainingQueue() {
+            let anyTrainingUpdated = false;
+            let anyTrainingCompleted = false;
+            
+            console.log("=== PROCESSING TRAINING QUEUE ===");
+            
             gameState.players.forEach(player => {
                 if (player.trainingQueue.length > 0) {
-                    player.trainingQueue.forEach((training, index) => {
+                    console.log(`Processing training for ${player.name}, queue length: ${player.trainingQueue.length}`);
+                    
+                    // Process in reverse order to avoid index issues when splicing
+                    for (let i = player.trainingQueue.length - 1; i >= 0; i--) {
+                        const training = player.trainingQueue[i];
+                        
+                        console.log(`BEFORE: ${player.name} - ${training.skill}: ${training.gamesRemaining} games remaining`);
+                        
+                        // CRITICAL: Decrement games remaining
                         training.gamesRemaining--;
+                        anyTrainingUpdated = true;
+                        
+                        console.log(`AFTER: ${player.name} - ${training.skill}: ${training.gamesRemaining} games remaining`);
                         
                         if (training.gamesRemaining <= 0) {
+                            console.log(`COMPLETING TRAINING: ${player.name} - ${training.skill}`);
+                            
+                            // Verify skill exists in player's training skills
+                            if (!player.trainingSkills.hasOwnProperty(training.skill)) {
+                                console.error(`ERROR: Skill ${training.skill} not found in player.trainingSkills`);
+                                console.log("Available skills:", Object.keys(player.trainingSkills));
+                                // Remove invalid training item
+                                player.trainingQueue.splice(i, 1);
+                                anyTrainingCompleted = true;
+                                continue;
+                            }
+                            
                             // Apply training improvement
                             const currentSkill = player.trainingSkills[training.skill];
                             const newSkill = Math.min(
@@ -4063,17 +4291,61 @@
                                 player.talentCeiling[training.skill]
                             );
                             
+                            console.log(`Skill improvement: ${training.skill} ${currentSkill} -> ${newSkill} (+${training.improvement})`);
+                            
                             player.trainingSkills[training.skill] = newSkill;
                             
                             // Show improvement notification
                             showTrainingCompleteNotification(player, training.skill, training.improvement);
                             
-                            // Remove from queue
-                            player.trainingQueue.splice(index, 1);
+                            // Remove from queue (safe to splice when iterating backwards)
+                            player.trainingQueue.splice(i, 1);
+                            
+                            anyTrainingCompleted = true;
+                            console.log(`COMPLETED AND REMOVED: ${player.name} - ${training.skill}`);
                         }
-                    });
+                    }
+                    
+                    console.log(`Final queue length for ${player.name}: ${player.trainingQueue.length}`);
                 }
             });
+            
+            console.log(`Training update summary: anyTrainingUpdated=${anyTrainingUpdated}, anyTrainingCompleted=${anyTrainingCompleted}`);
+            
+            // CRITICAL: Refresh UI if ANY training was updated (not just completed)
+            if (anyTrainingUpdated) {
+                console.log("Refreshing training UI...");
+                
+                // Refresh training selector dropdown (for completed training)
+                if (anyTrainingCompleted) {
+                    populateTrainingSelector();
+                }
+                
+                // ALWAYS refresh the training panel if a player is currently selected
+                const currentSelector = document.getElementById('training-player-selector');
+                const currentPlayerIndex = parseInt(currentSelector.value);
+                if (!isNaN(currentPlayerIndex)) {
+                    const currentPlayer = gameState.players[currentPlayerIndex];
+                    if (currentPlayer) {
+                        console.log(`BEFORE REFRESH: ${currentPlayer.name} has ${currentPlayer.trainingQueue.length} training items in queue`);
+                        
+                        // Log each item before refresh
+                        currentPlayer.trainingQueue.forEach((item, index) => {
+                            console.log(`  Queue item ${index}: ${item.skill} - ${item.gamesRemaining} games remaining`);
+                        });
+                        
+                        console.log(`Force refreshing training panel for ${currentPlayer.name}`);
+                        // Force refresh the training panel to update everything
+                        showTrainingPanel(currentPlayer);
+                        
+                        console.log(`AFTER REFRESH: UI should now reflect ${currentPlayer.trainingQueue.length} training items`);
+                    }
+                } else {
+                    console.log("No player currently selected in training panel - skipping UI refresh");
+                }
+            }
+            
+            console.log("=== TRAINING QUEUE PROCESSING COMPLETE ===");
         }
         
         // Show training completion notification
@@ -4112,6 +4384,17 @@
                 </div>
             `;
             document.body.appendChild(modal);
+            
+            // CRITICAL FIX: Refresh training UI if this player is currently selected
+            const currentSelector = document.getElementById('training-player-selector');
+            const currentPlayerIndex = parseInt(currentSelector.value);
+            if (!isNaN(currentPlayerIndex)) {
+                const currentPlayer = gameState.players[currentPlayerIndex];
+                if (currentPlayer === player) {
+                    // Refresh the training panel to update buttons
+                    showTrainingPanel(player);
+                }
+            }
             
             // Auto-close after 5 seconds
             setTimeout(() => {
