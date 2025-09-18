@@ -19,16 +19,23 @@
     <div class="bg-green-600 dark:bg-green-700 text-white p-4 shadow-lg">
         <div class="flex justify-between items-center">
             <button onclick="showResetConfirmation()" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
-                🔄 Reset Game
+                🔄 New Game
             </button>
             <div class="flex-1 text-center">
                 <h1 class="text-2xl font-bold">Cricket Manager</h1>
                 <div class="mt-2">
                     <span class="text-sm">Local Club Level</span> | 
-                    <span class="text-sm">Budget: $<span id="budget">50000</span></span>
+                    <button onclick="showFinancialModal()" class="text-sm hover:bg-white hover:bg-opacity-20 px-2 py-1 rounded transition-colors">
+                        Budget: $<span id="budget">50000</span>
+                    </button>
                 </div>
             </div>
-            <div class="w-20"></div> <!-- Spacer for centering -->
+            <div class="text-right">
+                <div class="text-sm opacity-75">Season <span id="season-counter">1</span></div>
+                <button onclick="showFinancialModal()" class="text-xs hover:bg-white hover:bg-opacity-20 px-2 py-1 rounded transition-colors">
+                    💰 Finances
+                </button>
+            </div>
         </div>
     </div>
 
@@ -555,7 +562,21 @@
             fanBase: 15, // Starting fan base (secret from player)
             totalIncome: 0, // Total income earned
             winStreak: 0, // Current win streak
-            lossStreak: 0 // Current loss streak
+            lossStreak: 0, // Current loss streak
+            // Financial tracking system
+            finances: {
+                currentSeason: {
+                    fanIncome: { home: 0, away: 0 },
+                    training: { batting: 0, bowling: 0, fielding: 0, specialist: 0 },
+                    transfers: 0 // For future player purchases
+                },
+                previousSeason: {
+                    fanIncome: { home: 0, away: 0 },
+                    training: { batting: 0, bowling: 0, fielding: 0, specialist: 0 },
+                    transfers: 0
+                },
+                seasonHistory: [] // Array of end-of-season budget totals
+            }
         };
 
         // Player class for generating cricketers
@@ -1618,7 +1639,7 @@
 
         // Schedule next match automatically (no user control)
         function scheduleNextMatch() {
-            // Use the same round-robin logic as the season schedule
+            // Use proper round-robin logic with home/away alternation
             const allTeams = [gameState.teamName, ...gameState.aiTeams.map(t => t.name)];
             const roundMatches = generateRoundMatches(allTeams, matchState.roundNumber);
             
@@ -1628,15 +1649,24 @@
             );
             
             if (playerMatch) {
-                // Determine opponent and home/away
+                // Determine opponent and home/away based on proper round-robin positioning
                 const opponentName = playerMatch.team1 === gameState.teamName ? playerMatch.team2 : playerMatch.team1;
                 matchState.opponent = gameState.aiTeams.find(team => team.name === opponentName);
+                
+                // CRITICAL: Player is home when they are team1 in the match
                 matchState.isHomeGame = playerMatch.team1 === gameState.teamName;
+                
+                console.log(`Round ${matchState.roundNumber}: ${playerMatch.team1} vs ${playerMatch.team2}`);
+                console.log(`Player (${gameState.teamName}) is ${matchState.isHomeGame ? 'HOME' : 'AWAY'}`);
             } else {
                 // Fallback if no match found (shouldn't happen with proper round-robin)
                 const teamIndex = (matchState.roundNumber - 1) % gameState.aiTeams.length;
                 matchState.opponent = gameState.aiTeams[teamIndex];
-                matchState.isHomeGame = matchState.roundNumber <= gameState.aiTeams.length;
+                // Simple alternation for fallback
+                matchState.isHomeGame = matchState.roundNumber % 2 === 1;
+                
+                console.log(`FALLBACK Round ${matchState.roundNumber}: Player vs ${matchState.opponent.name}`);
+                console.log(`Player is ${matchState.isHomeGame ? 'HOME' : 'AWAY'} (fallback logic)`);
             }
             
             // Random pitch conditions
@@ -1784,18 +1814,47 @@
             });
         }
 
-        // Process full round of matches for entire league - FIXED TO FOLLOW SCHEDULE
+        // Process full round of matches for entire league - COMPREHENSIVE FIX
         function processLeagueRound() {
             const roundResults = [];
             
+            // CRITICAL: Ensure we're using the CURRENT round number (before incrementing)
+            const currentRound = matchState.roundNumber;
+            
+            console.log(`\n=== PROCESSING LEAGUE ROUND ${currentRound} ===`);
+            console.log(`AI Teams before round processing:`);
+            gameState.aiTeams.forEach(team => {
+                console.log(`  ${team.name}: ${team.gamesPlayed}GP, ${team.wins}W, ${team.losses}L, ${team.points}P`);
+            });
+            
             // Get ALL matches for this round using the same logic as the schedule
             const allTeams = [gameState.teamName, ...gameState.aiTeams.map(t => t.name)];
-            const allRoundMatches = generateRoundMatches(allTeams, matchState.roundNumber);
+            const allRoundMatches = generateRoundMatches(allTeams, currentRound);
             
-            // Filter out the player's match (already played) and simulate the remaining AI vs AI matches
+            console.log(`\nAll matches for Round ${currentRound}:`);
+            allRoundMatches.forEach(match => {
+                console.log(`  ${match.team1} vs ${match.team2}`);
+            });
+            
+            // CRITICAL: Process ALL AI vs AI matches (not just filtered ones)
             const aiMatches = allRoundMatches.filter(match => 
                 match.team1 !== gameState.teamName && match.team2 !== gameState.teamName
             );
+            
+            console.log(`\nAI matches to simulate: ${aiMatches.length}`);
+            aiMatches.forEach(match => {
+                console.log(`  AI Match: ${match.team1} vs ${match.team2}`);
+            });
+            
+            // CRITICAL: Before simulating matches, create a backup of current AI team states
+            const aiTeamBackup = gameState.aiTeams.map(team => ({
+                name: team.name,
+                gamesPlayed: team.gamesPlayed,
+                wins: team.wins,
+                losses: team.losses,
+                points: team.points,
+                netRunRate: team.netRunRate
+            }));
             
             // Simulate each AI vs AI match for this round
             aiMatches.forEach(match => {
@@ -1803,6 +1862,8 @@
                 const team2 = gameState.aiTeams.find(t => t.name === match.team2);
                 
                 if (team1 && team2) {
+                    console.log(`\nSimulating: ${team1.name} (${team1.gamesPlayed}GP) vs ${team2.name} (${team2.gamesPlayed}GP)`);
+                    
                     // Random pitch and weather for each match
                     const pitchTypes = ['Fast Pitch', 'Slow Pitch', 'Bouncy Pitch', 'Spinning Pitch', 'Green Pitch'];
                     const randomPitch = pitchTypes[Math.floor(Math.random() * pitchTypes.length)];
@@ -1811,6 +1872,8 @@
                     
                     const result = simulateDetailedMatch(team1, team2, randomPitch, randomWeather);
                     roundResults.push(result);
+                    
+                    console.log(`Result: ${result.winner} won by ${result.margin}`);
                     
                     // Update team records
                     if (result.winner === team1.name) {
@@ -1827,23 +1890,39 @@
                         team2.points += 1;
                     }
                     
+                    // CRITICAL: ALWAYS increment games played for both teams
                     team1.gamesPlayed++;
                     team2.gamesPlayed++;
                     
                     // Update net run rate (simplified)
                     team1.netRunRate = (team1.wins - team1.losses) + Math.random() * 2 - 1;
                     team2.netRunRate = (team2.wins - team2.losses) + Math.random() * 2 - 1;
+                    
+                    console.log(`After match: ${team1.name} ${team1.gamesPlayed}GP ${team1.wins}W ${team1.losses}L ${team1.points}P`);
+                    console.log(`After match: ${team2.name} ${team2.gamesPlayed}GP ${team2.wins}W ${team2.losses}L ${team2.points}P`);
+                } else {
+                    console.error(`ERROR: Could not find teams for match ${match.team1} vs ${match.team2}`);
                 }
             });
             
             // Add all results to recent results
             gameState.recentResults.push(...roundResults);
             
-            // Update league standings for AI teams
+            console.log(`\nAI Teams after round processing:`);
+            gameState.aiTeams.forEach(team => {
+                console.log(`  ${team.name}: ${team.gamesPlayed}GP, ${team.wins}W, ${team.losses}L, ${team.points}P`);
+            });
+            
+            // CRITICAL: Comprehensive synchronization of league standings with ALL AI team data
+            console.log(`\nSynchronizing league standings...`);
             gameState.leagueStandings = gameState.leagueStandings.map(standing => {
                 if (!standing.isPlayer) {
                     const team = gameState.aiTeams.find(t => t.name === standing.name);
                     if (team) {
+                        const oldData = `${standing.gamesPlayed}GP ${standing.wins}W ${standing.losses}L ${standing.points}P`;
+                        const newData = `${team.gamesPlayed}GP ${team.wins}W ${team.losses}L ${team.points}P`;
+                        console.log(`  ${team.name}: ${oldData} -> ${newData}`);
+                        
                         return {
                             ...standing,
                             gamesPlayed: team.gamesPlayed,
@@ -1852,54 +1931,93 @@
                             points: team.points,
                             netRunRate: team.netRunRate
                         };
+                    } else {
+                        console.error(`ERROR: Could not find AI team ${standing.name} in gameState.aiTeams`);
                     }
                 }
                 return standing;
             });
+            
+            // CRITICAL: Verify that all AI teams have consistent game counts
+            console.log(`\nPost-round verification:`);
+            const playerGamesPlayed = gameState.leagueStandings.find(s => s.isPlayer).gamesPlayed;
+            console.log(`Player games played: ${playerGamesPlayed}`);
+            
+            let inconsistentTeams = [];
+            gameState.aiTeams.forEach(team => {
+                if (Math.abs(team.gamesPlayed - playerGamesPlayed) > 1) {
+                    inconsistentTeams.push(`${team.name}: ${team.gamesPlayed}GP (expected ~${playerGamesPlayed}GP)`);
+                }
+            });
+            
+            if (inconsistentTeams.length > 0) {
+                console.error(`WARNING: Inconsistent game counts detected:`);
+                inconsistentTeams.forEach(issue => console.error(`  ${issue}`));
+            } else {
+                console.log(`✅ All teams have consistent game counts (±1 games)`);
+            }
+            
+            // CRITICAL: Force save after league round processing
+            autoSave();
+            
+            console.log(`=== ROUND ${currentRound} PROCESSING COMPLETE ===\n`);
         }
 
-        // Generate round-robin matches for a specific round
+        // Generate round-robin matches for a specific round with proper home/away alternation
         function generateRoundRobinMatches(teams, roundNumber) {
             const matches = [];
             const numTeams = teams.length;
             
-            // If odd number of teams, one team gets a bye each round
             if (numTeams % 2 === 1) {
-                // For simplicity, just pair teams that are available
-                // In a real round-robin with byes, we'd track which team sits out
-                const availableTeams = teams.slice(0, numTeams - 1);
+                // Odd number of teams - one team gets a bye
+                const activeTeams = [...teams];
+                // Rotate teams for round-robin
+                if (roundNumber > 1) {
+                    const rotated = activeTeams.slice(1, (roundNumber - 1) % (numTeams - 1) + 1);
+                    const remaining = activeTeams.slice((roundNumber - 1) % (numTeams - 1) + 1);
+                    activeTeams.splice(1, numTeams - 1, ...remaining, ...rotated);
+                }
                 
-                for (let i = 0; i < availableTeams.length; i += 2) {
-                    if (i + 1 < availableTeams.length) {
-                        // Rotate pairings based on round number
-                        const team1Index = (i + roundNumber - 1) % availableTeams.length;
-                        const team2Index = (i + 1 + roundNumber - 1) % availableTeams.length;
-                        
-                        if (team1Index !== team2Index) {
-                            matches.push({
-                                home: availableTeams[team1Index],
-                                away: availableTeams[team2Index]
-                            });
-                        }
+                // Pair teams (skip last one for bye)
+                for (let i = 0; i < activeTeams.length - 1; i += 2) {
+                    if (i + 1 < activeTeams.length) {
+                        // Alternate home/away based on round and team pairing
+                        const isHomeFirst = (roundNumber + i) % 2 === 0;
+                        matches.push({
+                            team1: isHomeFirst ? activeTeams[i] : activeTeams[i + 1],
+                            team2: isHomeFirst ? activeTeams[i + 1] : activeTeams[i]
+                        });
                     }
                 }
             } else {
                 // Even number of teams - everyone plays
-                for (let i = 0; i < numTeams / 2; i++) {
-                    // Round-robin rotation algorithm
-                    let team1Index = i;
-                    let team2Index = (numTeams - 1 - i + roundNumber - 1) % numTeams;
+                const activeTeams = [...teams];
+                
+                // Round-robin rotation: keep first team fixed, rotate others
+                if (roundNumber > 1) {
+                    const firstTeam = activeTeams[0];
+                    const otherTeams = activeTeams.slice(1);
                     
-                    // Ensure we don't pair a team with itself
-                    if (team1Index === team2Index) {
-                        team2Index = (team2Index + 1) % numTeams;
+                    // Rotate other teams
+                    const rotations = (roundNumber - 1) % (numTeams - 1);
+                    for (let r = 0; r < rotations; r++) {
+                        otherTeams.push(otherTeams.shift());
                     }
                     
-                    // Make sure indices are different and valid
-                    if (team1Index !== team2Index && team1Index < numTeams && team2Index < numTeams) {
+                    activeTeams.splice(0, numTeams, firstTeam, ...otherTeams);
+                }
+                
+                // Generate matches with proper home/away allocation
+                for (let i = 0; i < numTeams / 2; i++) {
+                    const team1Index = i;
+                    const team2Index = numTeams - 1 - i;
+                    
+                    if (team1Index !== team2Index) {
+                        // Alternate home/away: team1 is home in odd rounds, away in even rounds
+                        const team1IsHome = (roundNumber + i) % 2 === 1;
                         matches.push({
-                            home: teams[team1Index],
-                            away: teams[team2Index]
+                            team1: team1IsHome ? activeTeams[team1Index] : activeTeams[team2Index],
+                            team2: team1IsHome ? activeTeams[team2Index] : activeTeams[team1Index]
                         });
                     }
                 }
@@ -3375,6 +3493,9 @@
                 matchState.isHomeGame
             );
             
+            // FINANCIAL TRACKING: Record match income
+            recordMatchIncome(incomeData.playerIncome, matchState.isHomeGame);
+            
             // Update fan base based on match result
             const playerWon = result.winner === gameState.teamName;
             calculateFanBaseChange(playerWon, playerScored100);
@@ -3419,6 +3540,391 @@
                 document.getElementById('live-match-details').style.display = 'none';
                 currentMatch = null;
             }, 5000);
+        }
+
+        // FINANCIAL TRACKING FUNCTIONS
+        
+        // Record training expense in current season
+        function recordTrainingExpense(skillName, cost) {
+            const skillCategories = {
+                'battingDefense': 'batting',
+                'battingAggression': 'batting',
+                'battingConsistency': 'batting',
+                'bowlingDefense': 'bowling',
+                'bowlingAggression': 'bowling',
+                'bowlingConsistency': 'bowling',
+                'fieldingCatching': 'fielding',
+                'fieldingAgility': 'fielding',
+                'wicketKeeping': 'specialist',
+                'captaincy': 'specialist'
+            };
+            
+            const category = skillCategories[skillName] || 'fielding';
+            gameState.finances.currentSeason.training[category] -= cost;
+        }
+        
+        // Record match income in current season
+        function recordMatchIncome(income, isHomeGame) {
+            if (isHomeGame) {
+                gameState.finances.currentSeason.fanIncome.home += income;
+            } else {
+                gameState.finances.currentSeason.fanIncome.away += income;
+            }
+        }
+        
+        // Calculate total current season finances
+        function calculateCurrentSeasonTotal() {
+            const current = gameState.finances.currentSeason;
+            const totalIncome = current.fanIncome.home + current.fanIncome.away;
+            const totalExpenses = current.training.batting + current.training.bowling + 
+                                 current.training.fielding + current.training.specialist + 
+                                 current.transfers;
+            return totalIncome + totalExpenses; // expenses are negative, so we add them
+        }
+        
+        // Show financial modal with tabs
+        function showFinancialModal() {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+            modal.onclick = (e) => {
+                if (e.target === modal) modal.remove();
+            };
+            
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+                    <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-bold">Financial Report</h3>
+                        <button onclick="this.closest('.fixed').remove()" 
+                                class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xl">
+                            ✕
+                        </button>
+                    </div>
+                    
+                    <!-- Tab Navigation -->
+                    <div class="flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                        <button onclick="showFinancialTab('current')" id="current-tab-btn" 
+                                class="financial-tab-btn flex-1 px-4 py-3 text-sm font-medium border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-700">
+                            Current Season
+                        </button>
+                        <button onclick="showFinancialTab('previous')" id="previous-tab-btn" 
+                                class="financial-tab-btn flex-1 px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                            Last Season
+                        </button>
+                        <button onclick="showFinancialTab('summary')" id="summary-tab-btn" 
+                                class="financial-tab-btn flex-1 px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                            Summary
+                        </button>
+                    </div>
+                    
+                    <div class="overflow-y-auto max-h-[calc(90vh-140px)]">
+                        ${generateFinancialTabContent()}
+                    </div>
+                    
+                    <div class="p-4 border-t border-gray-200 dark:border-gray-700 text-center">
+                        <button onclick="this.closest('.fixed').remove()" 
+                                class="px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 rounded">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        // Show financial tab
+        function showFinancialTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.financial-tab-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            
+            // Remove active styles from all tabs
+            document.querySelectorAll('.financial-tab-btn').forEach(btn => {
+                btn.classList.remove('border-blue-500', 'text-blue-600', 'dark:text-blue-400', 'bg-white', 'dark:bg-gray-700');
+                btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'dark:text-gray-400', 'dark:hover:text-gray-200');
+            });
+            
+            // Show selected tab content
+            document.getElementById(tabName + '-content').style.display = 'block';
+            
+            // Add active styles to selected tab
+            const activeBtn = document.getElementById(tabName + '-tab-btn');
+            activeBtn.classList.add('border-blue-500', 'text-blue-600', 'dark:text-blue-400', 'bg-white', 'dark:bg-gray-700');
+            activeBtn.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'dark:text-gray-400', 'dark:hover:text-gray-200');
+        }
+        
+        // Generate financial tab content
+        function generateFinancialTabContent() {
+            return `
+                <!-- Current Season Tab -->
+                <div id="current-content" class="financial-tab-content p-6">
+                    ${generateCurrentSeasonContent()}
+                </div>
+                
+                <!-- Previous Season Tab -->
+                <div id="previous-content" class="financial-tab-content p-6" style="display: none;">
+                    ${generatePreviousSeasonContent()}
+                </div>
+                
+                <!-- Summary Tab -->
+                <div id="summary-content" class="financial-tab-content p-6" style="display: none;">
+                    ${generateSummaryContent()}
+                </div>
+            `;
+        }
+        
+        // Generate current season financial content
+        function generateCurrentSeasonContent() {
+            const current = gameState.finances.currentSeason;
+            const totalIncome = current.fanIncome.home + current.fanIncome.away;
+            const totalTraining = current.training.batting + current.training.bowling + 
+                                 current.training.fielding + current.training.specialist;
+            const seasonTotal = calculateCurrentSeasonTotal();
+            
+            return `
+                <h4 class="text-lg font-bold mb-4 text-blue-600 dark:text-blue-400">Current Season Financial Report</h4>
+                
+                <!-- Fan Income Section -->
+                <div class="mb-6">
+                    <h5 class="font-bold text-green-600 dark:text-green-400 mb-3 text-lg">Fan Income</h5>
+                    <div class="bg-green-50 dark:bg-green-900 rounded-lg p-4 space-y-2">
+                        <div class="flex justify-between">
+                            <span>Home Games</span>
+                            <span class="font-bold text-green-600 dark:text-green-400">+$${current.fanIncome.home.toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Away Games</span>
+                            <span class="font-bold text-green-600 dark:text-green-400">+$${current.fanIncome.away.toLocaleString()}</span>
+                        </div>
+                        <hr class="border-green-200 dark:border-green-700">
+                        <div class="flex justify-between font-bold">
+                            <span>Total Income</span>
+                            <span class="text-green-600 dark:text-green-400">+$${totalIncome.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Training Expenses Section -->
+                <div class="mb-6">
+                    <h5 class="font-bold text-red-600 dark:text-red-400 mb-3 text-lg">Training</h5>
+                    <div class="bg-red-50 dark:bg-red-900 rounded-lg p-4 space-y-2">
+                        <div class="flex justify-between">
+                            <span>Batting</span>
+                            <span class="font-bold text-red-600 dark:text-red-400">$${current.training.batting.toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Bowling</span>
+                            <span class="font-bold text-red-600 dark:text-red-400">$${current.training.bowling.toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Fielding</span>
+                            <span class="font-bold text-red-600 dark:text-red-400">$${current.training.fielding.toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Specialist</span>
+                            <span class="font-bold text-red-600 dark:text-red-400">$${current.training.specialist.toLocaleString()}</span>
+                        </div>
+                        <hr class="border-red-200 dark:border-red-700">
+                        <div class="flex justify-between font-bold">
+                            <span>Total Training</span>
+                            <span class="text-red-600 dark:text-red-400">$${totalTraining.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Player Transfers Section (Future) -->
+                <div class="mb-6">
+                    <h5 class="font-bold text-gray-600 dark:text-gray-400 mb-3 text-lg">Player Transfers</h5>
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                        <div class="flex justify-between">
+                            <span>Player Purchases/Sales</span>
+                            <span class="font-bold text-gray-600 dark:text-gray-400">$${current.transfers.toLocaleString()}</span>
+                        </div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Transfer market coming soon!</p>
+                    </div>
+                </div>
+                
+                <hr class="border-gray-300 dark:border-gray-600 my-6">
+                
+                <!-- Season Total -->
+                <div class="bg-blue-50 dark:bg-blue-900 rounded-lg p-4">
+                    <div class="flex justify-between text-lg font-bold">
+                        <span>Season Total</span>
+                        <span class="${seasonTotal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">
+                            ${seasonTotal >= 0 ? '+' : ''}$${seasonTotal.toLocaleString()}
+                        </span>
+                    </div>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                        Net financial change for current season up to now
+                    </p>
+                </div>
+            `;
+        }
+        
+        // Generate previous season financial content
+        function generatePreviousSeasonContent() {
+            const previous = gameState.finances.previousSeason;
+            const totalIncome = previous.fanIncome.home + previous.fanIncome.away;
+            const totalTraining = previous.training.batting + previous.training.bowling + 
+                                 previous.training.fielding + previous.training.specialist;
+            const seasonTotal = totalIncome + totalTraining + previous.transfers;
+            
+            if (totalIncome === 0 && totalTraining === 0 && previous.transfers === 0) {
+                return `
+                    <div class="text-center text-gray-500 mt-8">
+                        <div class="text-4xl mb-4">📊</div>
+                        <h4 class="text-lg font-bold mb-2">No Previous Season Data</h4>
+                        <p>Complete your first season to see previous season financial data here.</p>
+                    </div>
+                `;
+            }
+            
+            return `
+                <h4 class="text-lg font-bold mb-4 text-blue-600 dark:text-blue-400">Previous Season Financial Report</h4>
+                
+                <!-- Fan Income Section -->
+                <div class="mb-6">
+                    <h5 class="font-bold text-green-600 dark:text-green-400 mb-3 text-lg">Fan Income</h5>
+                    <div class="bg-green-50 dark:bg-green-900 rounded-lg p-4 space-y-2">
+                        <div class="flex justify-between">
+                            <span>Home Games</span>
+                            <span class="font-bold text-green-600 dark:text-green-400">+$${previous.fanIncome.home.toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Away Games</span>
+                            <span class="font-bold text-green-600 dark:text-green-400">+$${previous.fanIncome.away.toLocaleString()}</span>
+                        </div>
+                        <hr class="border-green-200 dark:border-green-700">
+                        <div class="flex justify-between font-bold">
+                            <span>Total Income</span>
+                            <span class="text-green-600 dark:text-green-400">+$${totalIncome.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Training Expenses Section -->
+                <div class="mb-6">
+                    <h5 class="font-bold text-red-600 dark:text-red-400 mb-3 text-lg">Training</h5>
+                    <div class="bg-red-50 dark:bg-red-900 rounded-lg p-4 space-y-2">
+                        <div class="flex justify-between">
+                            <span>Batting</span>
+                            <span class="font-bold text-red-600 dark:text-red-400">$${previous.training.batting.toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Bowling</span>
+                            <span class="font-bold text-red-600 dark:text-red-400">$${previous.training.bowling.toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Fielding</span>
+                            <span class="font-bold text-red-600 dark:text-red-400">$${previous.training.fielding.toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Specialist</span>
+                            <span class="font-bold text-red-600 dark:text-red-400">$${previous.training.specialist.toLocaleString()}</span>
+                        </div>
+                        <hr class="border-red-200 dark:border-red-700">
+                        <div class="flex justify-between font-bold">
+                            <span>Total Training</span>
+                            <span class="text-red-600 dark:text-red-400">$${totalTraining.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Player Transfers Section -->
+                <div class="mb-6">
+                    <h5 class="font-bold text-gray-600 dark:text-gray-400 mb-3 text-lg">Player Transfers</h5>
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                        <div class="flex justify-between">
+                            <span>Player Purchases/Sales</span>
+                            <span class="font-bold text-gray-600 dark:text-gray-400">$${previous.transfers.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr class="border-gray-300 dark:border-gray-600 my-6">
+                
+                <!-- Season Total -->
+                <div class="bg-blue-50 dark:bg-blue-900 rounded-lg p-4">
+                    <div class="flex justify-between text-lg font-bold">
+                        <span>Previous Season Total</span>
+                        <span class="${seasonTotal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">
+                            ${seasonTotal >= 0 ? '+' : ''}$${seasonTotal.toLocaleString()}
+                        </span>
+                    </div>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                        Net financial change for the previous complete season
+                    </p>
+                </div>
+            `;
+        }
+        
+        // Generate summary content
+        function generateSummaryContent() {
+            const history = gameState.finances.seasonHistory;
+            
+            if (history.length === 0) {
+                return `
+                    <div class="text-center text-gray-500 mt-8">
+                        <div class="text-4xl mb-4">📈</div>
+                        <h4 class="text-lg font-bold mb-2">No Season History</h4>
+                        <p>Complete seasons to see your financial history summary here.</p>
+                        <p class="text-sm mt-2">End-of-season budget totals will be tracked over time.</p>
+                    </div>
+                `;
+            }
+            
+            const historyHTML = history.map((season, index) => {
+                const seasonNumber = history.length - index; // Newest first
+                const isPositive = season.budgetChange >= 0;
+                
+                return `
+                    <div class="flex justify-between items-center py-3 border-b border-gray-200 dark:border-gray-700">
+                        <div>
+                            <span class="font-medium">Season ${seasonNumber}</span>
+                            <span class="text-sm text-gray-500 dark:text-gray-400 ml-2">(${season.competition})</span>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-bold">$${season.endingBudget.toLocaleString()}</div>
+                            <div class="text-sm ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">
+                                ${isPositive ? '+' : ''}$${season.budgetChange.toLocaleString()}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            const totalChange = history.reduce((sum, season) => sum + season.budgetChange, 0);
+            const avgChange = totalChange / history.length;
+            
+            return `
+                <h4 class="text-lg font-bold mb-4 text-blue-600 dark:text-blue-400">Season Summary</h4>
+                
+                <div class="mb-6">
+                    <h5 class="font-bold mb-3">Budget History</h5>
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                        ${historyHTML}
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-blue-50 dark:bg-blue-900 rounded-lg p-4">
+                        <h6 class="font-bold text-blue-600 dark:text-blue-400 mb-2">Total Change</h6>
+                        <div class="text-2xl font-bold ${totalChange >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">
+                            ${totalChange >= 0 ? '+' : ''}$${totalChange.toLocaleString()}
+                        </div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Across ${history.length} season${history.length !== 1 ? 's' : ''}</p>
+                    </div>
+                    
+                    <div class="bg-purple-50 dark:bg-purple-900 rounded-lg p-4">
+                        <h6 class="font-bold text-purple-600 dark:text-purple-400 mb-2">Average Change</h6>
+                        <div class="text-2xl font-bold ${avgChange >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">
+                            ${avgChange >= 0 ? '+' : ''}$${Math.round(avgChange).toLocaleString()}
+                        </div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Per season</p>
+                    </div>
+                </div>
+            `;
         }
 
         // Custom alert function (since alert() is not supported)
@@ -3514,28 +4020,46 @@
             return roundHTML;
         }
 
-        // Generate matches for a specific round (used for season schedule display)
+        // Generate matches for a specific round with proper home/away alternation
         function generateRoundMatches(allTeams, round) {
             const matches = [];
             const numTeams = allTeams.length;
             
+            // CRITICAL: Implement proper double round-robin (14 rounds total)
+            // Rounds 1-7: First leg of fixtures
+            // Rounds 8-14: Return leg with home/away swapped
+            
+            const isReturnLeg = round > 7;
+            const actualRound = isReturnLeg ? round - 7 : round; // Convert round 8-14 to 1-7
+            
+            console.log(`\n=== GENERATING ROUND ${round} MATCHES ===`);
+            console.log(`Is return leg: ${isReturnLeg}, Actual round: ${actualRound}`);
+            
             if (numTeams % 2 === 1) {
                 // Odd number of teams - one team gets a bye
                 const activeTeams = [...allTeams];
-                // Rotate teams for round-robin
-                if (round > 1) {
-                    const rotated = activeTeams.slice(1, (round - 1) % (numTeams - 1) + 1);
-                    const remaining = activeTeams.slice((round - 1) % (numTeams - 1) + 1);
+                
+                // Rotate teams for round-robin (standard algorithm)
+                if (actualRound > 1) {
+                    const rotated = activeTeams.slice(1, (actualRound - 1) % (numTeams - 1) + 1);
+                    const remaining = activeTeams.slice((actualRound - 1) % (numTeams - 1) + 1);
                     activeTeams.splice(1, numTeams - 1, ...remaining, ...rotated);
                 }
                 
                 // Pair teams (skip last one for bye)
                 for (let i = 0; i < activeTeams.length - 1; i += 2) {
                     if (i + 1 < activeTeams.length) {
-                        matches.push({
-                            team1: activeTeams[i],
-                            team2: activeTeams[i + 1]
-                        });
+                        const team1 = activeTeams[i];
+                        const team2 = activeTeams[i + 1];
+                        
+                        // CRITICAL: Swap home/away for return leg
+                        if (isReturnLeg) {
+                            matches.push({ team1: team2, team2: team1 });
+                            console.log(`Return leg: ${team2} (home) vs ${team1} (away)`);
+                        } else {
+                            matches.push({ team1: team1, team2: team2 });
+                            console.log(`First leg: ${team1} (home) vs ${team2} (away)`);
+                        }
                     }
                 }
             } else {
@@ -3543,12 +4067,12 @@
                 const activeTeams = [...allTeams];
                 
                 // Round-robin rotation: keep first team fixed, rotate others
-                if (round > 1) {
+                if (actualRound > 1) {
                     const firstTeam = activeTeams[0];
                     const otherTeams = activeTeams.slice(1);
                     
                     // Rotate other teams
-                    const rotations = (round - 1) % (numTeams - 1);
+                    const rotations = (actualRound - 1) % (numTeams - 1);
                     for (let r = 0; r < rotations; r++) {
                         otherTeams.push(otherTeams.shift());
                     }
@@ -3556,19 +4080,29 @@
                     activeTeams.splice(0, numTeams, firstTeam, ...otherTeams);
                 }
                 
-                // Generate matches
+                // Generate matches with proper home/away
                 for (let i = 0; i < numTeams / 2; i++) {
                     const team1Index = i;
                     const team2Index = numTeams - 1 - i;
                     
                     if (team1Index !== team2Index) {
-                        matches.push({
-                            team1: activeTeams[team1Index],
-                            team2: activeTeams[team2Index]
-                        });
+                        const team1 = activeTeams[team1Index];
+                        const team2 = activeTeams[team2Index];
+                        
+                        // CRITICAL: Swap home/away for return leg
+                        if (isReturnLeg) {
+                            matches.push({ team1: team2, team2: team1 });
+                            console.log(`Return leg: ${team2} (home) vs ${team1} (away)`);
+                        } else {
+                            matches.push({ team1: team1, team2: team2 });
+                            console.log(`First leg: ${team1} (home) vs ${team2} (away)`);
+                        }
                     }
                 }
             }
+            
+            console.log(`Generated ${matches.length} matches for round ${round}`);
+            console.log(`=== END ROUND ${round} MATCHES ===\n`);
             
             return matches;
         }
@@ -3578,6 +4112,9 @@
             const playerStanding = gameState.leagueStandings.find(s => s.isPlayer);
             return playerStanding && playerStanding.gamesPlayed >= 14;
         }
+        
+        // Initialize season counter
+        let currentSeason = 1;
 
         // End season and show results
         function endSeason() {
@@ -3701,6 +4238,34 @@
 
         // Start new season
         function startNewSeason() {
+            // Store current season total for history
+            const currentSeasonTotal = calculateCurrentSeasonTotal();
+            
+            // Move current season data to previous season
+            gameState.finances.previousSeason = {
+                fanIncome: { ...gameState.finances.currentSeason.fanIncome },
+                training: { ...gameState.finances.currentSeason.training },
+                transfers: gameState.finances.currentSeason.transfers
+            };
+            
+            // Add season to history
+            gameState.finances.seasonHistory.push({
+                endingBudget: gameState.budget,
+                budgetChange: currentSeasonTotal,
+                competition: gameState.currentCompetition
+            });
+            
+            // Reset current season data
+            gameState.finances.currentSeason = {
+                fanIncome: { home: 0, away: 0 },
+                training: { batting: 0, bowling: 0, fielding: 0, specialist: 0 },
+                transfers: 0
+            };
+            
+            // Increment season counter
+            currentSeason++;
+            document.getElementById('season-counter').textContent = currentSeason;
+            
             // Age players
             agePlayers();
             
@@ -3718,6 +4283,9 @@
             // Close modal if it exists
             const modal = document.querySelector('div.fixed');
             if (modal) modal.remove();
+            
+            // Auto-save after season transition
+            autoSave();
             
             // Show message
             showCustomAlert('New season started! Your players have aged and gained experience. Time to try again!');
@@ -4131,6 +4699,9 @@
             gameState.budget -= cost;
             document.getElementById('budget').textContent = gameState.budget;
             
+            // FINANCIAL TRACKING: Record training expense
+            recordTrainingExpense(skillName, cost);
+            
             // Add to training queue
             const gamesUntilComplete = Math.floor(Math.random() * 2) + 2; // 2-3 games
             const trainingItem = {
@@ -4432,6 +5003,8 @@
                         totalIncome: gameState.totalIncome,
                         winStreak: gameState.winStreak,
                         lossStreak: gameState.lossStreak,
+                        // CRITICAL: Save financial tracking data
+                        finances: gameState.finances,
                         // CRITICAL: Save AI teams with all their data
                         aiTeams: gameState.aiTeams.map(team => ({
                             name: team.name,
@@ -4473,11 +5046,11 @@
                         opponentXI: matchState.opponentXI,
                         roundNumber: matchState.roundNumber
                     },
-                    version: '1.1' // Updated version for new save format
+                    version: '1.2' // Updated version for financial tracking
                 };
                 
                 localStorage.setItem('cricketManagerSave', JSON.stringify(saveData));
-                console.log('Game saved successfully with AI teams and league data');
+                console.log('Game saved successfully with AI teams, league data, and financial tracking');
             } catch (error) {
                 console.error('Error saving game:', error);
             }
@@ -4568,6 +5141,8 @@
                     populateTrainingSelector();
                     updateMatchDayReport();
                     displayOpponentXI();
+                    // CRITICAL FIX: Display the selected XI after loading
+                    displayYourXI();
                     
                     console.log('Game loaded successfully with AI teams and league data');
                     console.log(`Loaded ${gameState.aiTeams.length} AI teams`);
