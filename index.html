@@ -18,9 +18,14 @@
     <!-- Header -->
     <div class="bg-green-600 dark:bg-green-700 text-white p-4 shadow-lg">
         <div class="flex justify-between items-center">
-            <button onclick="showResetConfirmation()" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
-                🔄 New Game
-            </button>
+            <div class="flex gap-2">
+                <button onclick="showResetConfirmation()" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                    🔄 New Game
+                </button>
+                <button onclick="unlockNationalCupTester()" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                    🧪 Test National Cup
+                </button>
+            </div>
             <div class="flex-1 text-center">
                 <h1 class="text-2xl font-bold">Cricket Manager</h1>
                 <div class="mt-2">
@@ -89,9 +94,103 @@
         <!-- Market Tab -->
         <div id="market-tab" class="tab-content">
             <h2 class="text-xl font-bold mb-4">Transfer Market</h2>
-            <div class="text-center text-gray-500 mt-8">
-                <p>Market features coming soon!</p>
-                <p class="text-sm mt-2">Scout for players, buy rising stars, and trade with other clubs.</p>
+            
+            <!-- Market Availability Check -->
+            <div id="market-unavailable" class="text-center text-gray-500 mt-8" style="display: none;">
+                <div class="text-4xl mb-4">🔒</div>
+                <h3 class="text-lg font-bold mb-2">Market Unavailable</h3>
+                <p>The transfer market is only available during:</p>
+                <p class="text-sm mt-2">• National Cup • World Cup • Test World Series</p>
+                <p class="text-sm mt-4">Complete the Local Cup to unlock the transfer market!</p>
+            </div>
+            
+            <!-- Market Available Content -->
+            <div id="market-available" class="space-y-6">
+                
+                <!-- Scout Management Section -->
+                <div class="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg border">
+                    <h3 class="text-lg font-bold text-blue-800 dark:text-blue-200 mb-4">🕵️ Scout Management</h3>
+                    
+                    <!-- Active Scouts -->
+                    <div class="mb-4">
+                        <h4 class="font-medium mb-2">Your Scouts:</h4>
+                        <div id="active-scouts-list" class="space-y-2 mb-4">
+                            <!-- Active scouts will be displayed here -->
+                        </div>
+                        
+                        <!-- Scout Actions -->
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="showHireScoutModal()" class="px-3 py-2 bg-blue-500 text-white hover:bg-blue-600 rounded text-sm">
+                                📋 Hire Scout
+                            </button>
+                            <button onclick="sendScoutsOut()" id="send-scouts-btn" class="px-3 py-2 bg-green-500 text-white hover:bg-green-600 rounded text-sm">
+                                🔍 Send Scouts Out ($500)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Scout Reports Section -->
+                <div class="bg-green-50 dark:bg-green-900 p-4 rounded-lg border">
+                    <h3 class="text-lg font-bold text-green-800 dark:text-green-200 mb-4">📊 Scout Reports</h3>
+                    
+                    <div id="scout-reports-list" class="space-y-3">
+                        <!-- Scout reports will be displayed here -->
+                    </div>
+                    
+                    <div id="no-scout-reports" class="text-center text-gray-500 py-4">
+                        <p>No scout reports available.</p>
+                        <p class="text-sm mt-1">Hire scouts and send them out to discover talent!</p>
+                    </div>
+                </div>
+                
+                <!-- Contract Negotiations Section -->
+                <div class="bg-yellow-50 dark:bg-yellow-900 p-4 rounded-lg border">
+                    <h3 class="text-lg font-bold text-yellow-800 dark:text-yellow-200 mb-4">💼 Contract Negotiations</h3>
+                    
+                    <div id="contract-negotiations-list" class="space-y-3">
+                        <!-- Active contract negotiations will be displayed here -->
+                    </div>
+                    
+                    <div id="no-negotiations" class="text-center text-gray-500 py-4">
+                        <p>No active contract negotiations.</p>
+                        <p class="text-sm mt-1">Make offers to players from scout reports!</p>
+                    </div>
+                </div>
+                
+                <!-- Free Agency Pool -->
+                <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border">
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4">🏃 Free Agency Pool</h3>
+                    
+                    <div class="mb-3">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            Players released by other teams. Lower quality but immediately available.
+                        </p>
+                    </div>
+                    
+                    <div id="free-agents-list" class="space-y-2">
+                        <!-- Free agents will be displayed here -->
+                    </div>
+                    
+                    <div id="no-free-agents" class="text-center text-gray-500 py-4">
+                        <p>No free agents available.</p>
+                        <p class="text-sm mt-1">Check back after other teams release players!</p>
+                    </div>
+                </div>
+                
+                <!-- Transfer Window Status -->
+                <div class="bg-orange-50 dark:bg-orange-900 p-3 rounded border">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="font-medium text-orange-800 dark:text-orange-200">Transfer Window Status</h4>
+                            <p id="transfer-window-status" class="text-sm text-orange-600 dark:text-orange-400">
+                                Open - You can make contract offers
+                            </p>
+                        </div>
+                        <div class="text-2xl">📅</div>
+                    </div>
+                </div>
+                
             </div>
         </div>
 
@@ -590,6 +689,9 @@
                 this.isInjured = false;
                 this.injuryDaysLeft = 0;
                 
+                // CRITICAL: Determine if this is a star player based on level
+                this.isStar = this.determineStarStatus(level);
+                
                 // Generate stats based on level and type
                 this.generateStats(level);
                 
@@ -600,6 +702,18 @@
                 if (type === 'Bowler' || type === 'All-rounder') {
                     this.bowlingType = this.generateBowlingType();
                 }
+            }
+            
+            determineStarStatus(level) {
+                // Star player chances based on competition level
+                const starChances = {
+                    'local': 0.05,     // 5% chance - very rare at local level
+                    'national': 0.15,  // 15% chance - more common at national level
+                    'worldcup': 0.25,  // 25% chance - many stars at world level
+                    'test': 0.35       // 35% chance - elite level has many stars
+                };
+                
+                return Math.random() < (starChances[level] || 0.05);
             }
             
             generateName() {
@@ -616,38 +730,59 @@
             
             generateStats(level) {
                 // Base stats influenced by level (local = lower, higher levels = better)
-                const levelMultiplier = level === 'local' ? 0.6 : level === 'national' ? 0.8 : 1.0;
+                const levelMultiplier = level === 'local' ? 0.6 : level === 'national' ? 0.85 : level === 'worldcup' ? 1.1 : 1.3;
                 
-                // Local Cup: 10-25 games played
-                this.gamesPlayed = Math.floor(Math.random() * 16) + 10; // 10-25 games
+                // CRITICAL: Adjust for star players with more substantial bonuses
+                const starMultiplier = this.isStar ? 1.6 : 1.0; // Increased from 1.4 to 1.6
+                const effectiveMultiplier = levelMultiplier * starMultiplier;
+                
+                // Games played varies by level
+                this.gamesPlayed = level === 'local' ? 
+                    Math.floor(Math.random() * 16) + 10 : // 10-25 games local
+                    level === 'national' ? 
+                    Math.floor(Math.random() * 21) + 30 : // 30-50 games national
+                    Math.floor(Math.random() * 31) + 50; // 50-80 games international
                 
                 // ALL PLAYERS HAVE BATTING STATS (since all players must bat)
-                // Generate realistic batting average for level
+                // Generate realistic batting average for level with star boost
                 const baseAverage = level === 'local' ? 
                     (15 + Math.random() * 25) : // 15-40 for local
                     level === 'national' ? 
                     (20 + Math.random() * 30) : // 20-50 for national
                     (25 + Math.random() * 35); // 25-60 for international
                 
-                this.battingAverage = Math.floor(baseAverage * levelMultiplier);
+                this.battingAverage = Math.floor(baseAverage * effectiveMultiplier);
                 
                 // Calculate total runs based on average and games (with some variance)
                 const runsVariance = 0.8 + Math.random() * 0.4; // 0.8 to 1.2 multiplier
                 this.totalRuns = Math.floor(this.battingAverage * this.gamesPlayed * runsVariance);
                 
-                // Strike rate (runs per 100 balls) - realistic for level
-                this.strikeRate = Math.floor((60 + Math.random() * 80) * levelMultiplier); // 60-140 for local
+                // Strike rate with star boost
+                this.strikeRate = Math.floor((60 + Math.random() * 80) * effectiveMultiplier);
                 
-                // High score should be realistic (typically 1.5-3x average, max around 150-200 for local)
-                const highScoreMultiplier = 1.5 + Math.random() * 1.5; // 1.5-3x average
-                this.highScore = Math.min(
-                    Math.floor(this.battingAverage * highScoreMultiplier + Math.random() * 20),
-                    level === 'local' ? 180 : level === 'national' ? 220 : 300
-                );
+                // High score - star players have much better highs within +/- 5 runs of their average
+                if (this.isStar) {
+                    // Star players typically hit within +/- 5 runs of their average high scores
+                    const starHighScoreBase = this.battingAverage + Math.random() * 10 - 5; // +/- 5 variance
+                    this.highScore = Math.max(this.battingAverage + 10, starHighScoreBase);
+                } else {
+                    // Regular players have more unpredictable high scores
+                    const highScoreMultiplier = 1.5 + Math.random() * 1.5; // 1.5-3x average
+                    this.highScore = Math.min(
+                        Math.floor(this.battingAverage * highScoreMultiplier + Math.random() * 20),
+                        level === 'local' ? 180 : level === 'national' ? 220 : 300
+                    );
+                }
                 
                 // 50s and 100s based on total runs and high score
                 this.fifties = Math.floor(this.totalRuns / (this.battingAverage * 8)); // Rough estimate
                 this.hundreds = Math.floor(this.totalRuns / (this.battingAverage * 20)); // Even rougher
+                
+                // Star players get more 50s and 100s
+                if (this.isStar) {
+                    this.fifties = Math.floor(this.fifties * 1.3);
+                    this.hundreds = Math.floor(this.hundreds * 1.5);
+                }
                 
                 // Adjust for high score - can't have hundreds if high score < 100
                 if (this.highScore < 100) {
@@ -660,28 +795,50 @@
                 
                 // BOWLING STATS (only for bowlers and all-rounders)
                 if (this.type === 'Bowler' || this.type === 'All-rounder') {
-                    // Economy rate (runs per over) - realistic for amateur cricket
-                    this.economyRate = Math.max(3.0, 4.0 + Math.random() * 4.0 + (2.0 - levelMultiplier * 2)); // 3-8 runs per over
+                    // Economy rate - star players have significantly lower economies (5+ lower wickets regularly)
+                    let baseEconomy = 4.0 + Math.random() * 4.0 + (2.0 - levelMultiplier * 2);
+                    if (this.isStar) {
+                        baseEconomy = Math.max(2.5, baseEconomy - 1.5); // Star bowlers 1.5 runs per over better
+                    }
+                    this.economyRate = Math.max(2.5, baseEconomy);
                     
-                    // Total wickets based on games played and bowling skill
+                    // Total wickets - star players take 5+ wickets regularly and have better economy
                     const wicketsPerGame = level === 'local' ? 
-                        (1 + Math.random() * 2.5) * levelMultiplier : // 0.6-2.1 wickets per game for local
-                        (1.5 + Math.random() * 3) * levelMultiplier;
+                        (1 + Math.random() * 2.5) * effectiveMultiplier : 
+                        (1.5 + Math.random() * 3) * effectiveMultiplier;
                     this.totalWickets = Math.floor(wicketsPerGame * this.gamesPlayed);
                     
-                    // Best bowling figures - realistic performances
-                    const bestWickets = Math.min(
-                        Math.floor(Math.random() * 4) + 3, // 3-6 wickets
-                        Math.min(7, this.totalWickets) // Can't be more than total wickets or 7
-                    );
+                    // Star players have much better wicket-taking ability
+                    if (this.isStar) {
+                        this.totalWickets = Math.floor(this.totalWickets * 1.4);
+                    }
+                    
+                    // Best bowling figures - star players regularly get 5+ wickets
+                    let bestWickets;
+                    if (this.isStar) {
+                        bestWickets = Math.min(
+                            Math.floor(Math.random() * 4) + 5, // 5-8 wickets for stars
+                            Math.min(8, this.totalWickets)
+                        );
+                    } else {
+                        bestWickets = Math.min(
+                            Math.floor(Math.random() * 4) + 3, // 3-6 wickets for regular players
+                            Math.min(7, this.totalWickets)
+                        );
+                    }
                     
                     // Calculate realistic runs for best bowling (good bowling performance)
                     const runsPerWicket = this.economyRate * 3 + Math.random() * 10; // 3 overs per wicket + variance
                     const bestRuns = Math.floor(bestWickets * runsPerWicket * 0.7); // 30% better than average
                     this.bestBowling = `${bestWickets}/${bestRuns}`;
                     
-                    // 5-wicket and 10-wicket hauls (rare achievements)
-                    this.fiveWicketHauls = bestWickets >= 5 ? Math.floor(this.totalWickets / 25) : 0;
+                    // 5-wicket hauls - star players get them much more often
+                    if (this.isStar) {
+                        this.fiveWicketHauls = bestWickets >= 5 ? Math.floor(this.totalWickets / 15) : 0; // More frequent for stars
+                    } else {
+                        this.fiveWicketHauls = bestWickets >= 5 ? Math.floor(this.totalWickets / 25) : 0;
+                    }
+                    
                     this.tenWicketHauls = 0; // Very rare in limited overs cricket
                     
                     // For longer format cricket, 10-wicket hauls might happen
@@ -925,7 +1082,7 @@
                 this.budget = Math.floor(Math.random() * 30000) + 40000; // 40k-70k budget
                 this.isPlayer = false;
                 
-                // Fan base and income system
+                // Fan base and income system with level scaling
                 this.fanBase = this.generateInitialFanBase(level);
                 this.totalIncome = 0;
                 this.winStreak = 0;
@@ -933,16 +1090,16 @@
             }
             
             generateInitialFanBase(level) {
-                // Generate realistic starting fan bases based on competition level
+                // CRITICAL: Enhanced fan base scaling for National Cup and beyond
                 switch (level) {
                     case 'local':
                         return Math.floor(Math.random() * 20) + 8; // 8-27 fans
                     case 'national':
-                        return Math.floor(Math.random() * 500) + 200; // 200-699 fans
+                        return Math.floor(Math.random() * 800) + 400; // 400-1199 fans (much higher for national)
                     case 'worldcup':
-                        return Math.floor(Math.random() * 2000) + 1000; // 1000-2999 fans
+                        return Math.floor(Math.random() * 5000) + 2000; // 2000-6999 fans
                     case 'test':
-                        return Math.floor(Math.random() * 3000) + 2000; // 2000-4999 fans
+                        return Math.floor(Math.random() * 8000) + 5000; // 5000-12999 fans
                     default:
                         return 15;
                 }
@@ -950,7 +1107,8 @@
             
             generateTeamRoster(level) {
                 const roster = [];
-                // Generate balanced team: 6 batters, 5 bowlers, 4 all-rounders
+                // CRITICAL: Generate higher-skilled teams for National Cup
+                // Still 6 batters, 5 bowlers, 4 all-rounders but with level scaling
                 for (let i = 0; i < 6; i++) roster.push(new CricketPlayer('Batter', level));
                 for (let i = 0; i < 5; i++) roster.push(new CricketPlayer('Bowler', level));
                 for (let i = 0; i < 4; i++) roster.push(new CricketPlayer('All-rounder', level));
@@ -997,14 +1155,36 @@
 
         // Generate AI teams for competition
         function generateAITeams(level) {
-            const teamNames = [
-                'Thunder Hawks', 'Lightning Bolts', 'Storm Riders', 'Fire Eagles', 'Ice Warriors',
-                'Golden Lions', 'Silver Sharks', 'Red Dragons', 'Blue Tigers', 'Green Hornets',
-                'Mighty Wolves', 'Royal Knights', 'Wild Cats', 'Speed Demons', 'Power Rangers'
-            ];
+            // Different team names for each competition level
+            const teamNamesByLevel = {
+                'local': [
+                    'Town Strikers', 'Village Warriors', 'County Crushers', 'Local Legends', 'Park Rangers',
+                    'Community Champions', 'District Dynamos', 'Borough Blazers', 'Suburb Stars', 'City Slickers',
+                    'Metro Mavericks', 'Regional Rebels', 'Valley Victors', 'Hill Hawks', 'River Riders'
+                ],
+                'national': [
+                    'Sydney Thunder', 'Melbourne Storm', 'Brisbane Heat', 'Perth Scorchers', 'Adelaide Strikers',
+                    'Hobart Hurricanes', 'Darwin Cyclones', 'Newcastle Knights', 'Gold Coast Titans', 'Canberra Capitals',
+                    'Auckland Aces', 'Wellington Phoenix', 'Canterbury Crusaders', 'Otago Volts', 'Central Stags'
+                ],
+                'worldcup': [
+                    'Team Australia', 'Team England', 'Team India', 'Team Pakistan', 'Team South Africa',
+                    'Team New Zealand', 'Team West Indies', 'Team Sri Lanka', 'Team Bangladesh', 'Team Afghanistan',
+                    'Team Ireland', 'Team Scotland', 'Team Netherlands', 'Team Zimbabwe', 'Team Kenya',
+                    'Team Canada', 'Team USA', 'Team Nepal', 'Team Oman', 'Team UAE'
+                ],
+                'test': [
+                    'Elite Legends', 'Championship Giants', 'Premier Titans', 'Supreme Warriors', 'Ultimate Champions',
+                    'Master Crusaders', 'Grand Victors', 'Royal Gladiators', 'Imperial Eagles', 'Sovereign Lions',
+                    'Dynasty Kings', 'Pinnacle Panthers', 'Apex Predators', 'Summit Stallions', 'Crown Conquerors'
+                ]
+            };
+            
+            const teamNames = teamNamesByLevel[level] || teamNamesByLevel['local'];
             
             const teams = [];
-            const numTeams = level === 'local' ? 7 : level === 'national' ? 11 : 15; // 8, 12, or 16 teams total
+            // CRITICAL: For National Cup, we need exactly 9 AI teams for 10 total (including player)
+            const numTeams = level === 'local' ? 7 : level === 'national' ? 9 : 15; // 8, 10, or 16 teams total
             
             for (let i = 0; i < numTeams; i++) {
                 teams.push(new AITeam(teamNames[i], level));
@@ -1042,6 +1222,17 @@
             
             // Generate fresh competition
             initializeCompetition(competition);
+            
+            // CRITICAL: Update market availability immediately when competition changes
+            checkMarketAvailability();
+            
+            // CRITICAL: Schedule new match with fresh AI teams from the new competition level
+            // This will update the opponent and opponent XI display while keeping user's team intact
+            matchState.roundNumber = 1;
+            scheduleNextMatch();
+            
+            // Auto-save the competition change
+            autoSave();
         }
 
         // Initialize competition with AI teams
@@ -3975,36 +4166,42 @@
             }
         }
 
-        // Generate complete season schedule with 14 rounds in 2 columns
+        // Generate complete season schedule - NATIONAL CUP UPDATE
         function generateSeasonSchedule() {
             const scheduleDiv = document.getElementById('season-schedule');
             const allTeams = [gameState.teamName, ...gameState.aiTeams.map(t => t.name)];
             
-            // Generate 14 rounds total for double round-robin season
-            const totalRounds = 14;
+            // CRITICAL: Different total rounds for different competitions
+            const totalRounds = gameState.currentCompetition === 'national' ? 18 : 14;
+            const halfRounds = totalRounds / 2;
             
             // Split into two columns
-            const rounds1to7 = [];
-            const rounds8to14 = [];
+            const firstHalf = [];
+            const secondHalf = [];
             
-            for (let round = 1; round <= 7; round++) {
-                rounds1to7.push(generateRoundScheduleHTML(allTeams, round));
+            for (let round = 1; round <= halfRounds; round++) {
+                firstHalf.push(generateRoundScheduleHTML(allTeams, round));
             }
             
-            for (let round = 8; round <= 14; round++) {
-                rounds8to14.push(generateRoundScheduleHTML(allTeams, round));
+            for (let round = halfRounds + 1; round <= totalRounds; round++) {
+                secondHalf.push(generateRoundScheduleHTML(allTeams, round));
             }
+            
+            const competitionName = gameState.currentCompetition === 'national' ? 'National Cup' : 'Local Cup';
             
             scheduleDiv.innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                        <h3 class="font-bold text-lg mb-4 text-center text-gray-800 dark:text-gray-200">Rounds 1-7</h3>
-                        ${rounds1to7.join('')}
+                        <h3 class="font-bold text-lg mb-4 text-center text-gray-800 dark:text-gray-200">Rounds 1-${halfRounds} (Home/Away)</h3>
+                        ${firstHalf.join('')}
                     </div>
                     <div>
-                        <h3 class="font-bold text-lg mb-4 text-center text-gray-800 dark:text-gray-200">Rounds 8-14</h3>
-                        ${rounds8to14.join('')}
+                        <h3 class="font-bold text-lg mb-4 text-center text-gray-800 dark:text-gray-200">Rounds ${halfRounds + 1}-${totalRounds} (Return)</h3>
+                        ${secondHalf.join('')}
                     </div>
+                </div>
+                <div class="mt-4 text-sm text-gray-600 dark:text-gray-400 text-center">
+                    ${competitionName}: ${totalRounds} rounds total (double round-robin)
                 </div>
             `;
         }
@@ -4252,6 +4449,27 @@
             
             // Show success message
             showCustomAlert('National Cup unlocked! Your players have gained experience. Good luck in the next level!');
+        }
+
+        // Unlock National Cup for testing
+        function unlockNationalCupTester() {
+            // Enable National Cup instantly
+            gameState.competitions.national.unlocked = true;
+            
+            // Update the button appearance
+            const nationalBtn = document.getElementById('national-btn');
+            nationalBtn.disabled = false;
+            nationalBtn.classList.remove('bg-gray-300', 'dark:bg-gray-600', 'text-gray-500', 'dark:text-gray-400', 'cursor-not-allowed');
+            nationalBtn.classList.add('bg-yellow-500', 'text-white');
+            
+            // CRITICAL FIX: Auto-switch to National Cup to enable market access
+            selectCompetition('national');
+            
+            // Auto-save the change
+            autoSave();
+            
+            // Show confirmation
+            showCustomAlert('National Cup unlocked and activated! The transfer market is now available.');
         }
 
         // Start new season
@@ -5282,11 +5500,891 @@
             }
         }
         
+        // MARKET SYSTEM IMPLEMENTATION
+        
+        // Market system state
+        const marketState = {
+            scouts: [], // Active scouts
+            scoutReports: [], // Available scout reports
+            contractNegotiations: [], // Active contract offers
+            freeAgents: [], // Available free agents
+            isMarketAvailable: false, // Based on competition
+            transferWindowOpen: true, // Based on season timing
+            scoutingCost: 500, // Cost to send scouts out
+            scoutCooldown: false, // Prevent spam clicking
+            scoutTimer: null // Timer for scouting
+        };
+        
+        // Scout class
+        class Scout {
+            constructor(tier) {
+                this.tier = tier;
+                this.name = this.generateScoutName();
+                this.accuracy = this.getAccuracyByTier(tier);
+                this.cost = this.getCostByTier(tier);
+                this.specialization = this.generateSpecialization();
+                this.contractLength = Math.floor(Math.random() * 2) + 2; // 2-3 seasons
+                this.experience = Math.floor(Math.random() * 10) + 1; // 1-10 years
+                this.seasonsRemaining = this.contractLength;
+                this.isActive = false; // Whether currently scouting
+                this.cooldownGames = 0; // Games until can scout again
+            }
+            
+            generateScoutName() {
+                const firstNames = ['Alex', 'Ben', 'Chris', 'Dan', 'Emma', 'Frank', 'Grace', 'Henry', 'Ian', 'Jane'];
+                const lastNames = ['Smith', 'Jones', 'Brown', 'Davis', 'Wilson', 'Moore', 'Taylor', 'White', 'Hall', 'Lee'];
+                return firstNames[Math.floor(Math.random() * firstNames.length)] + ' ' + 
+                       lastNames[Math.floor(Math.random() * lastNames.length)];
+            }
+            
+            getAccuracyByTier(tier) {
+                const accuracyRanges = {
+                    'Rookie': 0.6,     // 60% accuracy
+                    'Professional': 0.75, // 75% accuracy
+                    'Elite': 0.85,     // 85% accuracy
+                    'Master': 0.95     // 95% accuracy
+                };
+                return accuracyRanges[tier] || 0.6;
+            }
+            
+            getCostByTier(tier) {
+                const costs = {
+                    'Rookie': 8000,
+                    'Professional': 20000,
+                    'Elite': 45000,
+                    'Master': 80000
+                };
+                return costs[tier] || 8000;
+            }
+            
+            generateSpecialization() {
+                const specializations = [
+                    'Batting Analysis', 'Bowling Analysis', 'Star Recognition', 
+                    'All-rounder Evaluation', 'Young Talent', 'Veteran Assessment'
+                ];
+                return specializations[Math.floor(Math.random() * specializations.length)];
+            }
+            
+            // Scout evaluates a player and creates a report
+            evaluatePlayer(player, competition) {
+                const report = {
+                    player: player,
+                    scoutName: this.name,
+                    scoutTier: this.tier,
+                    confidence: this.calculateConfidence(player),
+                    recommendation: this.generateRecommendation(player),
+                    evaluatedSkills: this.evaluateSkills(player),
+                    contractSuggestion: this.suggestContract(player, competition),
+                    hiddenTraitsDetected: this.detectHiddenTraits(player),
+                    timestamp: Date.now()
+                };
+                
+                return report;
+            }
+            
+            calculateConfidence(player) {
+                // Base confidence on scout accuracy and player's performance consistency
+                let confidence = this.accuracy;
+                
+                // Adjust based on specialization match
+                if (this.specialization === 'Batting Analysis' && (player.type === 'Batter' || player.type === 'All-rounder')) {
+                    confidence += 0.1;
+                } else if (this.specialization === 'Bowling Analysis' && (player.type === 'Bowler' || player.type === 'All-rounder')) {
+                    confidence += 0.1;
+                } else if (this.specialization === 'Star Recognition' && player.isStar) {
+                    confidence += 0.15;
+                }
+                
+                // Random variation
+                confidence += (Math.random() - 0.5) * 0.2; // ±10%
+                
+                return Math.max(0.3, Math.min(0.95, confidence));
+            }
+            
+            generateRecommendation(player) {
+                const confidence = this.calculateConfidence(player);
+                const isAccurate = Math.random() < this.accuracy;
+                
+                let recommendation;
+                
+                if (isAccurate) {
+                    // Accurate assessment
+                    if (player.isStar) {
+                        recommendation = 'STRONG BUY - Exceptional talent, will be a key player';
+                    } else if (player.battingAverage > 40 || (player.totalWickets / Math.max(player.gamesPlayed, 1)) > 2) {
+                        recommendation = 'BUY - Solid performer, good addition to squad';
+                    } else {
+                        recommendation = 'CONSIDER - Average player, may be worth a low offer';
+                    }
+                } else {
+                    // Inaccurate assessment (scout makes mistake)
+                    if (player.isStar) {
+                        recommendation = Math.random() < 0.3 ? 'CONSIDER - Decent player but nothing special' : 'BUY - Good potential';
+                    } else {
+                        recommendation = Math.random() < 0.3 ? 'STRONG BUY - Hidden gem, exceptional value!' : 'BUY - Strong performer';
+                    }
+                }
+                
+                return recommendation;
+            }
+            
+            evaluateSkills(player) {
+                const isAccurate = Math.random() < this.accuracy;
+                const skills = {};
+                
+                // Batting assessment
+                if (player.type === 'Batter' || player.type === 'All-rounder') {
+                    if (isAccurate) {
+                        skills.batting = this.accurateSkillAssessment(player.battingAverage, 50);
+                    } else {
+                        skills.batting = this.inaccurateSkillAssessment();
+                    }
+                }
+                
+                // Bowling assessment
+                if (player.type === 'Bowler' || player.type === 'All-rounder') {
+                    if (isAccurate) {
+                        const wicketsPerGame = player.totalWickets / Math.max(player.gamesPlayed, 1);
+                        skills.bowling = this.accurateSkillAssessment(wicketsPerGame * 20, 50); // Scale to 0-100
+                    } else {
+                        skills.bowling = this.inaccurateSkillAssessment();
+                    }
+                }
+                
+                return skills;
+            }
+            
+            accurateSkillAssessment(actualValue, baseline) {
+                if (actualValue >= baseline * 1.5) return 'Excellent';
+                if (actualValue >= baseline * 1.2) return 'Very Good';
+                if (actualValue >= baseline) return 'Good';
+                if (actualValue >= baseline * 0.8) return 'Average';
+                return 'Below Average';
+            }
+            
+            inaccurateSkillAssessment() {
+                const assessments = ['Excellent', 'Very Good', 'Good', 'Average', 'Below Average'];
+                return assessments[Math.floor(Math.random() * assessments.length)];
+            }
+            
+            detectHiddenTraits(player) {
+                const detected = [];
+                const detectionChance = this.accuracy * 0.7; // Harder to detect hidden traits
+                
+                player.hiddenTraits.forEach(trait => {
+                    if (Math.random() < detectionChance) {
+                        detected.push(trait);
+                    }
+                });
+                
+                // Sometimes scouts incorrectly "detect" traits that don't exist
+                if (Math.random() < (1 - this.accuracy) * 0.3) {
+                    const fakeTraits = ['Big Match Player', 'Pressure Performer', 'Team Player', 'Injury Prone'];
+                    detected.push(fakeTraits[Math.floor(Math.random() * fakeTraits.length)]);
+                }
+                
+                return detected;
+            }
+            
+            suggestContract(player, competition) {
+                const level = competition;
+                let signingBonus, perGameSalary, contractLength;
+                
+                if (player.isStar) {
+                    signingBonus = level === 'national' ? 25000 : level === 'worldcup' ? 50000 : 15000;
+                    perGameSalary = level === 'national' ? 1500 : level === 'worldcup' ? 2500 : 800;
+                    contractLength = 3;
+                } else if (player.battingAverage > 35 || (player.totalWickets / Math.max(player.gamesPlayed, 1)) > 1.5) {
+                    signingBonus = level === 'national' ? 15000 : level === 'worldcup' ? 30000 : 8000;
+                    perGameSalary = level === 'national' ? 1000 : level === 'worldcup' ? 1800 : 500;
+                    contractLength = 2;
+                } else {
+                    signingBonus = level === 'national' ? 8000 : level === 'worldcup' ? 15000 : 4000;
+                    perGameSalary = level === 'national' ? 600 : level === 'worldcup' ? 1200 : 300;
+                    contractLength = 1;
+                }
+                
+                // Scout accuracy affects contract suggestions
+                if (Math.random() > this.accuracy) {
+                    // Inaccurate scout might suggest wrong contract values
+                    signingBonus = Math.floor(signingBonus * (0.7 + Math.random() * 0.6)); // 70-130% of actual
+                    perGameSalary = Math.floor(perGameSalary * (0.7 + Math.random() * 0.6));
+                }
+                
+                return {
+                    signingBonus,
+                    perGameSalary,
+                    contractLength
+                };
+            }
+        }
+        
+        // Check if market is available
+        function checkMarketAvailability() {
+            const competition = gameState.currentCompetition;
+            const isAvailable = competition === 'national' || competition === 'worldcup' || competition === 'test';
+            
+            marketState.isMarketAvailable = isAvailable;
+            
+            const marketUnavailable = document.getElementById('market-unavailable');
+            const marketAvailable = document.getElementById('market-available');
+            
+            if (isAvailable) {
+                marketUnavailable.style.display = 'none';
+                marketAvailable.style.display = 'block';
+                updateMarketDisplay();
+            } else {
+                marketUnavailable.style.display = 'block';
+                marketAvailable.style.display = 'none';
+            }
+        }
+        
+        // Update market display
+        function updateMarketDisplay() {
+            updateActiveScoutsList();
+            updateScoutReportsList();
+            updateContractNegotiationsList();
+            updateFreeAgentsList();
+            updateTransferWindowStatus();
+        }
+        
+        // Show hire scout modal
+        function showHireScoutModal() {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+            modal.onclick = (e) => {
+                if (e.target === modal) modal.remove();
+            };
+            
+            const scoutTiers = [
+                { name: 'Rookie Scout', cost: 8000, accuracy: '60%', description: 'Basic analysis, frequent mistakes' },
+                { name: 'Professional Scout', cost: 20000, accuracy: '75%', description: 'Good insights, occasional errors' },
+                { name: 'Elite Scout', cost: 45000, accuracy: '85%', description: 'Detailed reports, rarely wrong' },
+                { name: 'Master Scout', cost: 80000, accuracy: '95%', description: 'Expert analysis, almost never wrong' }
+            ];
+            
+            const scoutHTML = scoutTiers.map(tier => `
+                <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg border">
+                    <div class="flex justify-between items-start mb-2">
+                        <h4 class="font-bold">${tier.name}</h4>
+                        <span class="text-lg font-bold text-green-600 dark:text-green-400">$${tier.cost.toLocaleString()}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Accuracy: ${tier.accuracy}</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">${tier.description}</p>
+                    <button onclick="hireScout('${tier.name.split(' ')[0]}'); this.closest('.fixed').remove();" 
+                            class="w-full px-3 py-2 bg-blue-500 text-white hover:bg-blue-600 rounded text-sm">
+                        Hire Scout
+                    </button>
+                </div>
+            `).join('');
+            
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+                    <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-bold">Hire Scout</h3>
+                        <button onclick="this.closest('.fixed').remove()" 
+                                class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xl">
+                            ✕
+                        </button>
+                    </div>
+                    
+                    <div class="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                        <div class="mb-4">
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                Scouts analyze players from other teams and recommend potential signings. 
+                                Better scouts provide more accurate reports but cost more to hire.
+                            </p>
+                            <p class="text-sm text-blue-600 dark:text-blue-400 mb-6">
+                                Scout contracts last 2-3 seasons before renewal is required.
+                            </p>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            ${scoutHTML}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        // Hire scout
+        function hireScout(tier) {
+            const scout = new Scout(tier);
+            
+            if (gameState.budget < scout.cost) {
+                showCustomAlert('Insufficient budget to hire this scout!');
+                return;
+            }
+            
+            gameState.budget -= scout.cost;
+            document.getElementById('budget').textContent = gameState.budget;
+            
+            marketState.scouts.push(scout);
+            
+            // Record expense in financial tracking
+            recordTransferExpense(scout.cost);
+            
+            updateActiveScoutsList();
+            showCustomAlert(`${scout.name} hired as ${tier} Scout! Contract: ${scout.contractLength} seasons.`);
+            
+            autoSave();
+        }
+        
+        // Record transfer expense
+        function recordTransferExpense(cost) {
+            gameState.finances.currentSeason.transfers -= cost;
+        }
+        
+        // Send scouts out
+        function sendScoutsOut() {
+            if (marketState.scouts.length === 0) {
+                showCustomAlert('You need to hire scouts first!');
+                return;
+            }
+            
+            if (gameState.budget < marketState.scoutingCost) {
+                showCustomAlert('Insufficient budget for scouting mission!');
+                return;
+            }
+            
+            if (marketState.scoutCooldown) {
+                showCustomAlert('Scouts are still analyzing previous reports. Please wait.');
+                return;
+            }
+            
+            // Deduct cost
+            gameState.budget -= marketState.scoutingCost;
+            document.getElementById('budget').textContent = gameState.budget;
+            recordTransferExpense(marketState.scoutingCost);
+            
+            // Set cooldown
+            marketState.scoutCooldown = true;
+            const sendButton = document.getElementById('send-scouts-btn');
+            sendButton.disabled = true;
+            sendButton.textContent = 'Scouting...';
+            
+            // Start timer (3-5 games simulation time, here just 5 seconds for demo)
+            setTimeout(() => {
+                generateScoutReports();
+                marketState.scoutCooldown = false;
+                sendButton.disabled = false;
+                sendButton.textContent = '🔍 Send Scouts Out ($500)';
+                showCustomAlert('Scout reports are ready! Check the Scout Reports section.');
+            }, 5000);
+            
+            autoSave();
+        }
+        
+        // Generate scout reports
+        function generateScoutReports() {
+            // Get players from other teams based on current competition
+            const availablePlayers = [];
+            
+            gameState.aiTeams.forEach(team => {
+                // Each scout finds 1-2 players from different teams
+                const teamPlayers = team.players.slice(0, 3); // Top 3 players from each team
+                availablePlayers.push(...teamPlayers.map(player => ({ player, team: team.name })));
+            });
+            
+            // Each scout generates 1 report
+            marketState.scouts.forEach(scout => {
+                if (availablePlayers.length === 0) return;
+                
+                // Randomly select a player
+                const randomIndex = Math.floor(Math.random() * availablePlayers.length);
+                const { player, team } = availablePlayers[randomIndex];
+                availablePlayers.splice(randomIndex, 1); // Remove to avoid duplicates
+                
+                // Generate report
+                const report = scout.evaluatePlayer(player, gameState.currentCompetition);
+                report.teamName = team;
+                report.id = Date.now() + Math.random(); // Unique ID
+                
+                marketState.scoutReports.push(report);
+            });
+            
+            updateScoutReportsList();
+        }
+        
+        // Update active scouts list
+        function updateActiveScoutsList() {
+            const listElement = document.getElementById('active-scouts-list');
+            
+            if (marketState.scouts.length === 0) {
+                listElement.innerHTML = `
+                    <div class="text-center text-gray-500 py-2">
+                        <p>No scouts hired.</p>
+                        <p class="text-sm mt-1">Hire scouts to discover talent!</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            listElement.innerHTML = marketState.scouts.map(scout => `
+                <div class="bg-white dark:bg-gray-700 p-3 rounded border">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h4 class="font-medium">${scout.name}</h4>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">${scout.tier} Scout (${Math.round(scout.accuracy * 100)}% accuracy)</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Specialization: ${scout.specialization}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm">${scout.seasonsRemaining} seasons left</p>
+                            <p class="text-xs text-gray-500">${scout.experience} years exp.</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Update scout reports list
+        function updateScoutReportsList() {
+            const listElement = document.getElementById('scout-reports-list');
+            const noReportsElement = document.getElementById('no-scout-reports');
+            
+            if (marketState.scoutReports.length === 0) {
+                listElement.innerHTML = '';
+                noReportsElement.style.display = 'block';
+                return;
+            }
+            
+            noReportsElement.style.display = 'none';
+            
+            listElement.innerHTML = marketState.scoutReports.map(report => `
+                <div class="bg-white dark:bg-gray-700 p-4 rounded border">
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <h4 class="font-bold text-lg">${report.player.name}</h4>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">${report.player.type} • Age ${report.player.age} • ${report.teamName}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm font-medium">Confidence: ${Math.round(report.confidence * 100)}%</p>
+                            <p class="text-xs text-gray-500">by ${report.scoutName}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <p class="font-medium text-sm ${getRecommendationColor(report.recommendation)}">${report.recommendation}</p>
+                    </div>
+                    
+                    <!-- Player Stats -->
+                    <div class="grid grid-cols-2 gap-4 mb-3 text-sm">
+                        <div>
+                            <p><strong>Batting:</strong> Avg ${report.player.battingAverage} | S/R ${report.player.strikeRate}</p>
+                            <p><strong>High Score:</strong> ${report.player.highScore}</p>
+                        </div>
+                        ${(report.player.type === 'Bowler' || report.player.type === 'All-rounder') ? `
+                        <div>
+                            <p><strong>Bowling:</strong> ${report.player.totalWickets} wickets</p>
+                            <p><strong>Economy:</strong> ${report.player.economyRate.toFixed(1)} | Best: ${report.player.bestBowling}</p>
+                        </div>
+                        ` : '<div></div>'}
+                    </div>
+                    
+                    <!-- Scout Analysis -->
+                    <div class="mb-3 text-sm">
+                        ${Object.keys(report.evaluatedSkills).map(skill => 
+                            `<span class="inline-block bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded mr-2 mb-1">${skill}: ${report.evaluatedSkills[skill]}</span>`
+                        ).join('')}
+                    </div>
+                    
+                    <!-- Hidden Traits -->
+                    ${report.hiddenTraitsDetected.length > 0 ? `
+                    <div class="mb-3 text-sm">
+                        <p class="font-medium mb-1">Detected Traits:</p>
+                        ${report.hiddenTraitsDetected.map(trait => 
+                            `<span class="inline-block bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-1 rounded mr-2 mb-1">${trait}</span>`
+                        ).join('')}
+                    </div>
+                    ` : ''}
+                    
+                    <!-- Contract Suggestion -->
+                    <div class="border-t pt-3 flex justify-between items-center">
+                        <div class="text-sm">
+                            <p><strong>Suggested Contract:</strong></p>
+                            <p>Signing: $${report.contractSuggestion.signingBonus.toLocaleString()} | Per Game: $${report.contractSuggestion.perGameSalary.toLocaleString()} | ${report.contractSuggestion.contractLength} season(s)</p>
+                        </div>
+                        <button onclick="makeContractOffer('${report.id}')" 
+                                class="px-4 py-2 bg-green-500 text-white hover:bg-green-600 rounded">
+                            Make Offer
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Get recommendation color class
+        function getRecommendationColor(recommendation) {
+            if (recommendation.includes('STRONG BUY')) return 'text-green-600 dark:text-green-400';
+            if (recommendation.includes('BUY')) return 'text-blue-600 dark:text-blue-400';
+            return 'text-yellow-600 dark:text-yellow-400';
+        }
+        
+        // Make contract offer
+        function makeContractOffer(reportId) {
+            const report = marketState.scoutReports.find(r => r.id == reportId);
+            if (!report) return;
+            
+            showContractOfferModal(report);
+        }
+        
+        // Show contract offer modal
+        function showContractOfferModal(report) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+            modal.onclick = (e) => {
+                if (e.target === modal) modal.remove();
+            };
+            
+            const suggested = report.contractSuggestion;
+            
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-lg w-full max-h-[90vh] overflow-hidden">
+                    <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-bold">Contract Offer - ${report.player.name}</h3>
+                        <button onclick="this.closest('.fixed').remove()" 
+                                class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xl">
+                            ✕
+                        </button>
+                    </div>
+                    
+                    <div class="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                        <div class="mb-4">
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                Make an offer to ${report.player.name} (${report.player.type}, Age ${report.player.age}) from ${report.teamName}.
+                            </p>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Signing Bonus</label>
+                                <input type="number" id="signing-bonus" value="${suggested.signingBonus}" min="0" 
+                                       class="w-full text-base p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600">
+                                <p class="text-xs text-gray-500 mt-1">Scout suggested: $${suggested.signingBonus.toLocaleString()}</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Per-Game Salary</label>
+                                <input type="number" id="per-game-salary" value="${suggested.perGameSalary}" min="0"
+                                       class="w-full text-base p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600">
+                                <p class="text-xs text-gray-500 mt-1">Scout suggested: $${suggested.perGameSalary.toLocaleString()}</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Contract Length (seasons)</label>
+                                <select id="contract-length" class="w-full text-base p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600">
+                                    <option value="1" ${suggested.contractLength === 1 ? 'selected' : ''}>1 Season</option>
+                                    <option value="2" ${suggested.contractLength === 2 ? 'selected' : ''}>2 Seasons</option>
+                                    <option value="3" ${suggested.contractLength === 3 ? 'selected' : ''}>3 Seasons</option>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">Scout suggested: ${suggested.contractLength} season(s)</p>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6 p-3 bg-yellow-50 dark:bg-yellow-900 rounded">
+                            <p class="text-sm text-yellow-800 dark:text-yellow-200">
+                                <strong>Note:</strong> Player decision depends on your offer competitiveness, team strength, and their current situation.
+                                Higher offers increase acceptance chances but cost more money.
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+                        <button onclick="this.closest('.fixed').remove()" 
+                                class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                            Cancel
+                        </button>
+                        <button onclick="submitContractOffer('${report.id}'); this.closest('.fixed').remove();" 
+                                class="px-4 py-2 bg-green-500 text-white hover:bg-green-600 rounded">
+                            Submit Offer
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        // Submit contract offer
+        function submitContractOffer(reportId) {
+            const report = marketState.scoutReports.find(r => r.id == reportId);
+            if (!report) return;
+            
+            const signingBonus = parseInt(document.getElementById('signing-bonus').value) || 0;
+            const perGameSalary = parseInt(document.getElementById('per-game-salary').value) || 0;
+            const contractLength = parseInt(document.getElementById('contract-length').value) || 1;
+            
+            const totalCost = signingBonus + (perGameSalary * 14 * contractLength); // Estimate total cost
+            
+            if (gameState.budget < signingBonus) {
+                showCustomAlert('Insufficient budget for signing bonus!');
+                return;
+            }
+            
+            // Create contract negotiation
+            const negotiation = {
+                id: Date.now() + Math.random(),
+                player: report.player,
+                teamName: report.teamName,
+                offer: {
+                    signingBonus,
+                    perGameSalary,
+                    contractLength
+                },
+                scoutReport: report,
+                status: 'pending',
+                responseTime: Date.now() + (Math.random() * 3000) + 2000, // 2-5 seconds response
+                accepted: null
+            };
+            
+            marketState.contractNegotiations.push(negotiation);
+            
+            // Remove from scout reports
+            marketState.scoutReports = marketState.scoutReports.filter(r => r.id !== reportId);
+            
+            updateScoutReportsList();
+            updateContractNegotiationsList();
+            
+            // Process response after delay
+            setTimeout(() => {
+                processContractResponse(negotiation.id);
+            }, negotiation.responseTime - Date.now());
+            
+            showCustomAlert(`Contract offer submitted to ${report.player.name}. Awaiting response...`);
+            autoSave();
+        }
+        
+        // Process contract response
+        function processContractResponse(negotiationId) {
+            const negotiation = marketState.contractNegotiations.find(n => n.id === negotiationId);
+            if (!negotiation) return;
+            
+            // Player decision logic
+            const acceptanceChance = calculateAcceptanceChance(negotiation);
+            const accepted = Math.random() < acceptanceChance;
+            
+            negotiation.status = accepted ? 'accepted' : 'rejected';
+            negotiation.accepted = accepted;
+            
+            if (accepted) {
+                // Add player to team
+                addPlayerToTeam(negotiation.player, negotiation.offer);
+                
+                // Deduct signing bonus
+                gameState.budget -= negotiation.offer.signingBonus;
+                document.getElementById('budget').textContent = gameState.budget;
+                recordTransferExpense(negotiation.offer.signingBonus);
+                
+                // CRITICAL: Remove player from ALL scout reports to prevent multiple offers
+                removePlayerFromScoutReports(negotiation.player);
+                
+                showCustomAlert(`🎉 ${negotiation.player.name} accepted your offer and joined your team!`);
+            } else {
+                showCustomAlert(`❌ ${negotiation.player.name} rejected your offer. They want better terms or prefer their current team.`);
+            }
+            
+            updateContractNegotiationsList();
+            updateScoutReportsList(); // Update scout reports display to show player removal
+            displayPlayers();
+            autoSave();
+        }
+        
+        // Calculate acceptance chance
+        function calculateAcceptanceChance(negotiation) {
+            const player = negotiation.player;
+            const offer = negotiation.offer;
+            const suggested = negotiation.scoutReport.contractSuggestion;
+            
+            let chance = 0.3; // Base 30% chance
+            
+            // Offer competitiveness
+            const bonusRatio = offer.signingBonus / suggested.signingBonus;
+            const salaryRatio = offer.perGameSalary / suggested.perGameSalary;
+            const lengthRatio = offer.contractLength / suggested.contractLength;
+            
+            // Better offers increase chance
+            if (bonusRatio >= 1.2) chance += 0.3; // 20% over suggestion
+            else if (bonusRatio >= 1.0) chance += 0.2; // At suggestion
+            else if (bonusRatio >= 0.8) chance += 0.1; // 80% of suggestion
+            
+            if (salaryRatio >= 1.2) chance += 0.3;
+            else if (salaryRatio >= 1.0) chance += 0.2;
+            else if (salaryRatio >= 0.8) chance += 0.1;
+            
+            // Longer contracts are more attractive
+            if (lengthRatio >= 1.0) chance += 0.1;
+            
+            // Player factors
+            if (player.age > 30) chance += 0.1; // Older players more likely to move
+            if (player.isStar) chance -= 0.2; // Stars are harder to get
+            
+            // Team strength factor (simplified)
+            const playerTeamPosition = Math.floor(Math.random() * 8) + 1; // Simulate current team position
+            if (playerTeamPosition > 5) chance += 0.2; // Players from weak teams more likely to move
+            
+            // Random loyalty factor
+            chance += (Math.random() - 0.5) * 0.3; // ±15% random factor
+            
+            return Math.max(0.05, Math.min(0.95, chance)); // Clamp between 5% and 95%
+        }
+        
+        // Remove player from all scout reports (to prevent multiple offers)
+        function removePlayerFromScoutReports(player) {
+            // Remove from scout reports
+            marketState.scoutReports = marketState.scoutReports.filter(report => 
+                !(report.player.name === player.name && 
+                  report.player.age === player.age && 
+                  report.player.type === player.type)
+            );
+            
+            // Remove from any pending contract negotiations
+            marketState.contractNegotiations = marketState.contractNegotiations.filter(negotiation => 
+                !(negotiation.player.name === player.name && 
+                  negotiation.player.age === player.age && 
+                  negotiation.player.type === player.type)
+            );
+        }
+        
+        // Add player to team
+        function addPlayerToTeam(player, contract) {
+            // Check roster space
+            if (gameState.players.length >= 20) {
+                showCustomAlert('Your roster is full! Release a player first before signing new ones.');
+                return false;
+            }
+            
+            // CRITICAL: Remove player from their original AI team roster
+            removePlayerFromAITeams(player);
+            
+            // Create new player object for your team
+            const newPlayer = {
+                ...player,
+                contract: {
+                    signingBonus: contract.signingBonus,
+                    perGameSalary: contract.perGameSalary,
+                    contractLength: contract.contractLength,
+                    seasonsRemaining: contract.contractLength
+                },
+                isTransfer: true,
+                transferDate: Date.now(),
+                // Mark as transferred to prevent future scouting
+                isTransferred: true
+            };
+            
+            gameState.players.push(newPlayer);
+            return true;
+        }
+        
+        // Remove player from AI teams after successful transfer
+        function removePlayerFromAITeams(transferredPlayer) {
+            gameState.aiTeams.forEach(team => {
+                // Find and remove the player from this team's roster
+                const playerIndex = team.players.findIndex(p => 
+                    p.name === transferredPlayer.name && 
+                    p.age === transferredPlayer.age &&
+                    p.type === transferredPlayer.type
+                );
+                
+                if (playerIndex !== -1) {
+                    console.log(`Removing ${transferredPlayer.name} from ${team.name}'s roster`);
+                    team.players.splice(playerIndex, 1);
+                    
+                    // Replace with a new player of the same type to maintain team balance
+                    const replacementPlayer = new CricketPlayer(transferredPlayer.type, team.level);
+                    team.players.push(replacementPlayer);
+                    console.log(`Added replacement player ${replacementPlayer.name} to ${team.name}`);
+                }
+            });
+        }
+        
+        // Update contract negotiations list
+        function updateContractNegotiationsList() {
+            const listElement = document.getElementById('contract-negotiations-list');
+            const noNegotiationsElement = document.getElementById('no-negotiations');
+            
+            if (marketState.contractNegotiations.length === 0) {
+                listElement.innerHTML = '';
+                noNegotiationsElement.style.display = 'block';
+                return;
+            }
+            
+            noNegotiationsElement.style.display = 'none';
+            
+            listElement.innerHTML = marketState.contractNegotiations.map(negotiation => {
+                const statusColor = negotiation.status === 'pending' ? 'text-yellow-600 dark:text-yellow-400' :
+                                   negotiation.status === 'accepted' ? 'text-green-600 dark:text-green-400' :
+                                   'text-red-600 dark:text-red-400';
+                
+                const statusIcon = negotiation.status === 'pending' ? '⏳' :
+                                  negotiation.status === 'accepted' ? '✅' :
+                                  '❌';
+                
+                return `
+                    <div class="bg-white dark:bg-gray-700 p-4 rounded border">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <h4 class="font-bold">${negotiation.player.name}</h4>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">${negotiation.player.type} • Age ${negotiation.player.age} • From ${negotiation.teamName}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-medium ${statusColor}">${statusIcon} ${negotiation.status.toUpperCase()}</p>
+                            </div>
+                        </div>
+                        
+                        <div class="text-sm">
+                            <p><strong>Your Offer:</strong></p>
+                            <p>Signing: $${negotiation.offer.signingBonus.toLocaleString()} | Per Game: $${negotiation.offer.perGameSalary.toLocaleString()} | ${negotiation.offer.contractLength} season(s)</p>
+                        </div>
+                        
+                        ${negotiation.status === 'pending' ? '<p class="text-xs text-gray-500 mt-2">Awaiting player response...</p>' : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Update free agents list (simplified for now)
+        function updateFreeAgentsList() {
+            const listElement = document.getElementById('free-agents-list');
+            const noAgentsElement = document.getElementById('no-free-agents');
+            
+            // For now, show placeholder
+            listElement.innerHTML = '';
+            noAgentsElement.style.display = 'block';
+        }
+        
+        // Update transfer window status
+        function updateTransferWindowStatus() {
+            const statusElement = document.getElementById('transfer-window-status');
+            
+            if (marketState.transferWindowOpen) {
+                statusElement.textContent = 'Open - You can make contract offers';
+                statusElement.className = 'text-sm text-green-600 dark:text-green-400';
+            } else {
+                statusElement.textContent = 'Closed - Transfer window not active';
+                statusElement.className = 'text-sm text-red-600 dark:text-red-400';
+            }
+        }
+        
+        // Initialize market system
+        function initializeMarketSystem() {
+            checkMarketAvailability();
+        }
+        
+        // Update market check on competition change
+        function updateMarketForCompetition() {
+            checkMarketAvailability();
+        }
+        
         // Start the game
         initGame();
         
         // Initialize training system
         initializeTrainingSystem();
+        
+        // Initialize market system
+        initializeMarketSystem();
     </script>
 </body>
 </html>
