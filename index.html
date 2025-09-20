@@ -1183,8 +1183,8 @@
             const teamNames = teamNamesByLevel[level] || teamNamesByLevel['local'];
             
             const teams = [];
-            // CRITICAL: For National Cup, we need exactly 9 AI teams for 10 total (including player)
-            const numTeams = level === 'local' ? 7 : level === 'national' ? 9 : 15; // 8, 10, or 16 teams total
+            // CRITICAL: For National Cup, we need exactly 10 AI teams for 11 total (including player) = 20 games
+            const numTeams = level === 'local' ? 7 : level === 'national' ? 10 : 15; // 8, 11, or 16 teams total
             
             for (let i = 0; i < numTeams; i++) {
                 teams.push(new AITeam(teamNames[i], level));
@@ -2225,6 +2225,12 @@
             document.getElementById('pitch-type').textContent = matchState.pitchType;
             document.getElementById('weather-conditions').textContent = matchState.weather;
             
+            // CRITICAL: Enable scouting for first away game after local games
+            if (!matchState.isHomeGame && marketState.gamesPlayedSinceScouts >= 1) {
+                marketState.scoutingEnabled = true;
+                updateScoutButtonState();
+            }
+            
             // Update advantages/effects
             const homeAdvantage = document.getElementById('home-advantage');
             if (matchState.isHomeGame) {
@@ -2440,7 +2446,7 @@
             }
         }
 
-        // Display your XI
+        // Display your XI with drag and drop support
         function displayYourXI() {
             const yourXIDiv = document.getElementById('your-team-xi');
             
@@ -2459,16 +2465,116 @@
                 if (player.isCaptain) playerRole += ' (C)';
                 if (player.isWicketKeeper) playerRole += ' (WK)';
                 
+                // Player type indicator with color coding
+                const playerTypeColor = player.type === 'Batter' ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' :
+                                       player.type === 'Bowler' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                                       'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200';
+                
                 return `
-                    <div class="text-sm p-2 bg-white dark:bg-gray-700 rounded border flex justify-between items-center">
-                        <div>
-                            <div class="font-medium">${index + 1}. ${player.name}${playerRole}</div>
-                            <div class="text-xs text-gray-600 dark:text-gray-400">${battingStats}</div>
+                    <div class="xi-player-item text-sm p-2 bg-white dark:bg-gray-700 rounded border cursor-move hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors" 
+                         draggable="true" 
+                         data-player-name="${playerName}"
+                         data-position="${index}">
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center gap-3 flex-1">
+                                <div class="text-gray-500 dark:text-gray-400 font-mono text-xs w-6">
+                                    ${index + 1}.
+                                </div>
+                                <div class="flex-1">
+                                    <div class="font-medium flex items-center gap-2">
+                                        ${player.name}${playerRole}
+                                        <span class="text-xs px-2 py-1 rounded ${playerTypeColor}">${player.type}</span>
+                                    </div>
+                                    <div class="text-xs text-gray-600 dark:text-gray-400">${battingStats}</div>
+                                </div>
+                            </div>
+                            <button onclick="removeFromXI('${playerName}')" class="text-red-500 hover:text-red-700 text-xs ml-2">Remove</button>
                         </div>
-                        <button onclick="removeFromXI('${playerName}')" class="text-red-500 hover:text-red-700 text-xs">Remove</button>
                     </div>
                 `;
             }).join('');
+            
+            // Add drag and drop event listeners
+            addDragAndDropListeners();
+        }
+        
+        // Add drag and drop functionality
+        function addDragAndDropListeners() {
+            const playerItems = document.querySelectorAll('.xi-player-item');
+            
+            playerItems.forEach(item => {
+                item.addEventListener('dragstart', handleDragStart);
+                item.addEventListener('dragover', handleDragOver);
+                item.addEventListener('drop', handleDrop);
+                item.addEventListener('dragend', handleDragEnd);
+            });
+        }
+        
+        let draggedElement = null;
+        
+        function handleDragStart(e) {
+            draggedElement = this;
+            this.style.opacity = '0.5';
+            
+            // Add visual feedback
+            this.classList.add('border-2', 'border-blue-400', 'border-dashed');
+        }
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+            
+            // Add visual feedback for drop zones
+            if (this !== draggedElement) {
+                this.classList.add('border-t-4', 'border-green-400');
+            }
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            
+            if (this !== draggedElement) {
+                const draggedPlayerName = draggedElement.dataset.playerName;
+                const targetPosition = parseInt(this.dataset.position);
+                
+                // Reorder the selectedXI array
+                reorderSelectedXI(draggedPlayerName, targetPosition);
+                
+                // Refresh the display
+                displayYourXI();
+            }
+            
+            // Remove visual feedback
+            document.querySelectorAll('.xi-player-item').forEach(item => {
+                item.classList.remove('border-t-4', 'border-green-400');
+            });
+        }
+        
+        function handleDragEnd(e) {
+            this.style.opacity = '';
+            this.classList.remove('border-2', 'border-blue-400', 'border-dashed');
+            
+            // Remove all visual feedback
+            document.querySelectorAll('.xi-player-item').forEach(item => {
+                item.classList.remove('border-t-4', 'border-green-400');
+            });
+            
+            draggedElement = null;
+        }
+        
+        // Reorder selected XI array based on drag and drop
+        function reorderSelectedXI(playerName, newPosition) {
+            // Find current position of dragged player
+            const currentPosition = matchState.selectedXI.indexOf(playerName);
+            
+            if (currentPosition === -1) return;
+            
+            // Remove player from current position
+            const player = matchState.selectedXI.splice(currentPosition, 1)[0];
+            
+            // Insert at new position
+            matchState.selectedXI.splice(newPosition, 0, player);
+            
+            console.log(`Moved ${playerName} from position ${currentPosition + 1} to position ${newPosition + 1}`);
         }
 
         // Remove player from XI
@@ -3555,6 +3661,22 @@
             const commentary = document.getElementById('match-commentary');
             const result = currentMatch.getMatchResult();
             
+            // CRITICAL FIX: Determine batting order for proper result format
+            const battingFirstTeam = currentMatch.battingFirst.name || gameState.teamName;
+            const battingSecondTeam = currentMatch.fieldingFirst.name || gameState.teamName;
+            
+            // CRITICAL FIX: Update result margin format based on batting order
+            if (result.winner !== 'Tie') {
+                if (result.winner === battingFirstTeam) {
+                    // Team batting first won - show runs margin
+                    result.margin = `${currentMatch.team1Score.runs - currentMatch.team2Score.runs} runs`;
+                } else {
+                    // Team batting second won - show wickets margin
+                    const wicketsRemaining = 10 - (result.winner === result.team1 ? currentMatch.team1Score.wickets : currentMatch.team2Score.wickets);
+                    result.margin = `${wicketsRemaining} wickets`;
+                }
+            }
+            
             // Store the complete match transcript
             const matchTranscript = commentary.innerHTML;
             
@@ -3663,7 +3785,7 @@
                     
                     // FIXED: Update best bowling figures when performance is better
                     if (player.matchStats.wicketsTaken > 0) {
-                        const currentBestWickets = parseInt(player.bestBowling.split('/')[0]);
+                        const currentBestWickets = parseInt((player.bestBowling && player.bestBowling.includes('/') ? player.bestBowling.split('/')[0] : '0'));
                         const currentBestRuns = parseInt(player.bestBowling.split('/')[1]);
                         
                         // Better bowling: more wickets, or same wickets with fewer runs
@@ -3684,6 +3806,9 @@
             
             // CRITICAL: Process training queue after each match
             processTrainingQueue();
+            
+            // CRITICAL: Update scouting timing after each match
+            updateScoutingTiming();
             
             // FAN BASE AND INCOME SYSTEM INTEGRATION
             
@@ -4322,10 +4447,14 @@
             return matches;
         }
 
-        // Check if season is complete (14 games played - double round robin)
+        // Check if season is complete - depends on competition level
         function checkSeasonComplete() {
             const playerStanding = gameState.leagueStandings.find(s => s.isPlayer);
-            return playerStanding && playerStanding.gamesPlayed >= 14;
+            if (!playerStanding) return false;
+            
+            // CRITICAL: Different game counts for different competitions
+            const requiredGames = gameState.currentCompetition === 'national' ? 18 : 14;
+            return playerStanding.gamesPlayed >= requiredGames;
         }
         
         // Initialize season counter
@@ -5512,7 +5641,11 @@
             transferWindowOpen: true, // Based on season timing
             scoutingCost: 500, // Cost to send scouts out
             scoutCooldown: false, // Prevent spam clicking
-            scoutTimer: null // Timer for scouting
+            scoutTimer: null, // Timer for scouting
+            // CRITICAL: New scouting management
+            scoutingEnabled: true, // Whether scouting is currently enabled (start true for season start)
+            firstAwayGameScoutingEnabled: false, // Track if first away game scouting has been enabled
+            scoutReportTimers: [] // Track when scout reports expire
         };
         
         // Scout class
@@ -5837,10 +5970,30 @@
             gameState.finances.currentSeason.transfers -= cost;
         }
         
-        // Send scouts out
+        // Send scouts out - CRITICAL FIX: Implement proper scout capacity limits and timing
         function sendScoutsOut() {
             if (marketState.scouts.length === 0) {
                 showCustomAlert('You need to hire scouts first!');
+                return;
+            }
+            
+            // CRITICAL: Check scout hiring limits based on competition level
+            const scoutLimits = {
+                'local': 0,      // No scouts allowed at local level
+                'national': 2,   // 2 scouts max at national
+                'worldcup': 3,   // 3 scouts max at world cup
+                'test': 3        // 3 scouts max at test
+            };
+            
+            const maxScouts = scoutLimits[gameState.currentCompetition] || 0;
+            if (marketState.scouts.length > maxScouts) {
+                showCustomAlert(`Too many scouts! Maximum ${maxScouts} scouts allowed at ${gameState.currentCompetition} level.`);
+                return;
+            }
+            
+            // CRITICAL: Check if scouting is currently enabled (timing system)
+            if (!marketState.scoutingEnabled) {
+                showCustomAlert('Scouting is not available at this time. Play more matches to enable scouting.');
                 return;
             }
             
@@ -5865,19 +6018,24 @@
             sendButton.disabled = true;
             sendButton.textContent = 'Scouting...';
             
+            // CRITICAL: Disable scouting after use (will be re-enabled for first away game)
+            marketState.scoutingEnabled = false;
+            marketState.gamesPlayedSinceScouts = 0;
+            
             // Start timer (3-5 games simulation time, here just 5 seconds for demo)
             setTimeout(() => {
                 generateScoutReports();
                 marketState.scoutCooldown = false;
                 sendButton.disabled = false;
                 sendButton.textContent = '🔍 Send Scouts Out ($500)';
+                updateScoutButtonState(); // Update button state after timer
                 showCustomAlert('Scout reports are ready! Check the Scout Reports section.');
             }, 5000);
             
             autoSave();
         }
         
-        // Generate scout reports
+        // Generate scout reports with skill-based capacity limits
         function generateScoutReports() {
             // Get players from other teams based on current competition
             const availablePlayers = [];
@@ -5888,21 +6046,37 @@
                 availablePlayers.push(...teamPlayers.map(player => ({ player, team: team.name })));
             });
             
-            // Each scout generates 1 report
+            // CRITICAL: Each scout can only find a limited number of players based on skill level
+            const scoutCapacities = {
+                'Rookie': 1,      // Can only find 1 player
+                'Professional': 2, // Can find 2 players
+                'Elite': 3,       // Can find 3 players
+                'Master': 4       // Can find 4 players
+            };
+            
+            // Clear existing scout reports before generating new ones
+            marketState.scoutReports = [];
+            
+            // Each scout generates reports up to their capacity
             marketState.scouts.forEach(scout => {
-                if (availablePlayers.length === 0) return;
+                const capacity = scoutCapacities[scout.tier] || 1;
                 
-                // Randomly select a player
-                const randomIndex = Math.floor(Math.random() * availablePlayers.length);
-                const { player, team } = availablePlayers[randomIndex];
-                availablePlayers.splice(randomIndex, 1); // Remove to avoid duplicates
-                
-                // Generate report
-                const report = scout.evaluatePlayer(player, gameState.currentCompetition);
-                report.teamName = team;
-                report.id = Date.now() + Math.random(); // Unique ID
-                
-                marketState.scoutReports.push(report);
+                for (let i = 0; i < capacity && availablePlayers.length > 0; i++) {
+                    // Randomly select a player
+                    const randomIndex = Math.floor(Math.random() * availablePlayers.length);
+                    const { player, team } = availablePlayers[randomIndex];
+                    availablePlayers.splice(randomIndex, 1); // Remove to avoid duplicates
+                    
+                    // Generate report
+                    const report = scout.evaluatePlayer(player, gameState.currentCompetition);
+                    report.teamName = team;
+                    report.id = Date.now() + Math.random() + i; // Unique ID
+                    
+                    // CRITICAL: Add timer for when this report will expire (2-3 matches)
+                    report.expiresAfterGames = Math.floor(Math.random() * 2) + 2; // 2-3 games
+                    
+                    marketState.scoutReports.push(report);
+                }
             });
             
             updateScoutReportsList();
@@ -6274,6 +6448,10 @@
             };
             
             gameState.players.push(newPlayer);
+            
+            // CRITICAL FIX: Update the team selection dropdown after adding player
+            updatePlayerSelector();
+            
             return true;
         }
         
@@ -6375,6 +6553,80 @@
         // Update market check on competition change
         function updateMarketForCompetition() {
             checkMarketAvailability();
+        }
+        
+        // CRITICAL: Update scout button state based on timing
+        function updateScoutButtonState() {
+            const sendButton = document.getElementById('send-scouts-btn');
+            if (!sendButton) return;
+            
+            if (!marketState.scoutingEnabled) {
+                sendButton.disabled = true;
+                sendButton.textContent = 'Scouting Not Available';
+                sendButton.className = 'px-3 py-2 bg-gray-400 text-white rounded text-sm cursor-not-allowed';
+            } else if (marketState.scoutCooldown) {
+                sendButton.disabled = true;
+                sendButton.textContent = 'Scouting...';
+                sendButton.className = 'px-3 py-2 bg-gray-400 text-white rounded text-sm cursor-not-allowed';
+            } else {
+                sendButton.disabled = false;
+                sendButton.textContent = '🔍 Send Scouts Out ($500)';
+                sendButton.className = 'px-3 py-2 bg-green-500 text-white hover:bg-green-600 rounded text-sm';
+            }
+        }
+        
+        // CRITICAL: Process scout reports expiry after matches
+        function processScoutReportExpiry() {
+            marketState.scoutReports = marketState.scoutReports.filter(report => {
+                report.expiresAfterGames--;
+                return report.expiresAfterGames > 0;
+            });
+            
+            // Update display if any reports were removed
+            updateScoutReportsList();
+        }
+        
+        // CRITICAL: Track games for scouting timing
+        function updateScoutingTiming() {
+            const playerStanding = gameState.leagueStandings.find(s => s.isPlayer);
+            const gamesPlayed = playerStanding ? playerStanding.gamesPlayed : 0;
+            
+            // CRITICAL: Scout timing rules:
+            // - Available at start of season (games = 0)
+            // - Disabled after first game until first away game
+            // - First away game re-enables scouting
+            
+            if (gamesPlayed === 0) {
+                // Start of season - scouts available
+                marketState.scoutingEnabled = true;
+            } else if (gamesPlayed === 1) {
+                // After first game - disable scouts
+                marketState.scoutingEnabled = false;
+            } else {
+                // Check if this is the first away game of the season
+                // Look through recent results to find first away game
+                const playerResults = gameState.recentResults.filter(result => 
+                    result.team1 === gameState.teamName || result.team2 === gameState.teamName
+                );
+                
+                // Find first away game (where user's team is team2)
+                const firstAwayGame = playerResults.find(result => result.team2 === gameState.teamName);
+                
+                if (firstAwayGame && !marketState.firstAwayGameScoutingEnabled) {
+                    // This is or was the first away game - enable scouting
+                    marketState.scoutingEnabled = true;
+                    marketState.firstAwayGameScoutingEnabled = true;
+                } else if (!marketState.firstAwayGameScoutingEnabled) {
+                    // Still waiting for first away game
+                    marketState.scoutingEnabled = false;
+                }
+            }
+            
+            // Process scout report expiry
+            processScoutReportExpiry();
+            
+            // Update button state
+            updateScoutButtonState();
         }
         
         // Start the game
