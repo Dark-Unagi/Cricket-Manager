@@ -12,35 +12,6 @@
             background-color: #5D5CDE; 
             color: white; 
         }
-        
-        /* Drag and drop improvements for mobile */
-        .xi-player-item {
-            user-select: none;
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            touch-action: manipulation;
-            -webkit-touch-callout: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-        
-        .xi-player-item:active {
-            opacity: 0.7;
-        }
-        
-        /* Ensure text inside dragable items can't be selected */
-        .xi-player-item * {
-            user-select: none;
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            pointer-events: none;
-        }
-        
-        /* But allow button clicks */
-        .xi-player-item button {
-            pointer-events: auto;
-        }
     </style>
 </head>
 <body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen">
@@ -2500,24 +2471,40 @@
                                        'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200';
                 
                 return `
-                    <div class="xi-player-item text-sm p-2 bg-white dark:bg-gray-700 rounded border cursor-move hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors" 
-                         draggable="true" 
+                    <div class="xi-player-item text-sm p-2 bg-white dark:bg-gray-700 rounded border hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors select-none" 
                          data-player-name="${playerName}"
-                         data-position="${index}">
+                         data-position="${index}"
+                         style="touch-action: none; user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;">
                         <div class="flex justify-between items-center">
-                            <div class="flex items-center gap-3 flex-1">
+                            <div class="flex items-center gap-2 flex-1">
                                 <div class="text-gray-500 dark:text-gray-400 font-mono text-xs w-6">
                                     ${index + 1}.
                                 </div>
-                                <div class="flex-1">
-                                    <div class="font-medium flex items-center gap-2">
-                                        ${player.name}${playerRole}
-                                        <span class="text-xs px-2 py-1 rounded ${playerTypeColor}">${player.type}</span>
+                                <!-- Mobile-friendly reorder buttons -->
+                                <div class="flex flex-col gap-1">
+                                    <button onclick="movePlayerUp(${index})" 
+                                            class="text-blue-500 hover:text-blue-700 text-xs w-4 h-4 flex items-center justify-center ${index === 0 ? 'invisible' : ''}"
+                                            title="Move up">
+                                        ▲
+                                    </button>
+                                    <button onclick="movePlayerDown(${index})" 
+                                            class="text-blue-500 hover:text-blue-700 text-xs w-4 h-4 flex items-center justify-center ${index === matchState.selectedXI.length - 1 ? 'invisible' : ''}"
+                                            title="Move down">
+                                        ▼
+                                    </button>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-medium flex items-center gap-2 flex-wrap">
+                                        <span class="truncate">${player.name}${playerRole}</span>
+                                        <span class="text-xs px-2 py-1 rounded ${playerTypeColor} flex-shrink-0">${player.type}</span>
                                     </div>
-                                    <div class="text-xs text-gray-600 dark:text-gray-400">${battingStats}</div>
+                                    <div class="text-xs text-gray-600 dark:text-gray-400 truncate">${battingStats}</div>
                                 </div>
                             </div>
-                            <button onclick="removeFromXI('${playerName}')" class="text-red-500 hover:text-red-700 text-xs ml-2">Remove</button>
+                            <button onclick="removeFromXI('${playerName}')" 
+                                    class="text-red-500 hover:text-red-700 text-xs ml-2 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900 flex-shrink-0">
+                                Remove
+                            </button>
                         </div>
                     </div>
                 `;
@@ -2604,6 +2591,32 @@
             matchState.selectedXI.splice(newPosition, 0, player);
             
             console.log(`Moved ${playerName} from position ${currentPosition + 1} to position ${newPosition + 1}`);
+        }
+        
+        // Mobile-friendly move player up function
+        function movePlayerUp(index) {
+            if (index <= 0) return; // Already at top
+            
+            // Swap with player above
+            const temp = matchState.selectedXI[index];
+            matchState.selectedXI[index] = matchState.selectedXI[index - 1];
+            matchState.selectedXI[index - 1] = temp;
+            
+            // Refresh display
+            displayYourXI();
+        }
+        
+        // Mobile-friendly move player down function  
+        function movePlayerDown(index) {
+            if (index >= matchState.selectedXI.length - 1) return; // Already at bottom
+            
+            // Swap with player below
+            const temp = matchState.selectedXI[index];
+            matchState.selectedXI[index] = matchState.selectedXI[index + 1];
+            matchState.selectedXI[index + 1] = temp;
+            
+            // Refresh display
+            displayYourXI();
         }
 
         // Remove player from XI
