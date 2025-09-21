@@ -709,11 +709,25 @@
                 const starChances = {
                     'local': 0.05,     // 5% chance - very rare at local level
                     'national': 0.15,  // 15% chance - more common at national level
-                    'worldcup': 0.25,  // 25% chance - many stars at world level
+                    'worldcup': 0.30,  // 30% chance - many stars at world level
                     'test': 0.35       // 35% chance - elite level has many stars
                 };
                 
-                return Math.random() < (starChances[level] || 0.05);
+                const isRegularStar = Math.random() < (starChances[level] || 0.05);
+                
+                // CRITICAL: Super Star determination for World Cup and above
+                if (level === 'worldcup' || level === 'test') {
+                    const superStarChance = level === 'worldcup' ? 0.08 : 0.12; // 8% worldcup, 12% test
+                    const isSuperStar = Math.random() < superStarChance;
+                    
+                    if (isSuperStar) {
+                        this.isSuperStar = true;
+                        return true; // Super Stars are also regular stars
+                    }
+                }
+                
+                this.isSuperStar = false;
+                return isRegularStar;
             }
             
             generateName() {
@@ -974,6 +988,14 @@
                 gameState.players : gameState.players.filter(p => p.type === gameState.currentFilter);
             
             playerList.innerHTML = filteredPlayers.map(player => {
+                // CRITICAL: Add Super Star indicator
+                let playerNameDisplay = player.name;
+                if (player.isSuperStar) {
+                    playerNameDisplay = `⭐ ${player.name}`;
+                } else if (player.isStar) {
+                    playerNameDisplay = `★ ${player.name}`;
+                }
+
                 let statsHTML = `
                     <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                         Games: ${player.gamesPlayed} | Age: ${player.age}
@@ -1107,7 +1129,7 @@
             
             generateTeamRoster(level) {
                 const roster = [];
-                // CRITICAL: Generate higher-skilled teams for National Cup
+                // CRITICAL: Generate higher-skilled teams for National Cup and World Cup
                 // Still 6 batters, 5 bowlers, 4 all-rounders but with level scaling
                 for (let i = 0; i < 6; i++) roster.push(new CricketPlayer('Batter', level));
                 for (let i = 0; i < 5; i++) roster.push(new CricketPlayer('Bowler', level));
@@ -1220,16 +1242,35 @@
             document.getElementById('competition-title').textContent = competitionNames[competition];
             document.getElementById('league-title').textContent = competitionNames[competition] + ' Standings';
             
-            // Generate fresh competition
-            initializeCompetition(competition);
+            // CRITICAL FIX: Reset World Cup state when switching to non-World Cup competitions
+            if (competition !== 'worldcup') {
+                worldCupState.isWorldCupActive = false;
+                console.log(`Switched away from World Cup to ${competition} - World Cup state deactivated`);
+            }
+            
+            // CRITICAL: Initialize appropriate tournament format
+            if (competition === 'worldcup') {
+                // Initialize World Cup tournament
+                initializeWorldCupTournament();
+            } else {
+                // Initialize regular league competition
+                initializeCompetition(competition);
+            }
             
             // CRITICAL: Update market availability immediately when competition changes
             checkMarketAvailability();
             
             // CRITICAL: Schedule new match with fresh AI teams from the new competition level
-            // This will update the opponent and opponent XI display while keeping user's team intact
             matchState.roundNumber = 1;
-            scheduleNextMatch();
+            if (competition === 'worldcup') {
+                scheduleNextWorldCupMatch();
+            } else {
+                scheduleNextMatch();
+            }
+            
+            // CRITICAL FIX: Force update standings display immediately after competition change
+            updateStandings();
+            updateRecentResults();
             
             // Auto-save the competition change
             autoSave();
@@ -1416,6 +1457,12 @@
 
         // Update league standings display
         function updateStandings() {
+            // CRITICAL: Check if World Cup is active and use World Cup display instead
+            if (worldCupState.isWorldCupActive) {
+                updateWorldCupDisplay();
+                return;
+            }
+            
             const standingsList = document.getElementById('standings-list');
             
             // Sort by points, then by net run rate
@@ -2154,6 +2201,802 @@
             console.log(`=== ROUND ${currentRound} PROCESSING COMPLETE ===\n`);
         }
 
+        // World Cup Tournament System - NEW WORLD CUP IMPLEMENTATION
+        
+        // World Cup tournament state
+        const worldCupState = {
+            phase: 'groups', // 'groups', 'round16', 'quarters', 'semis', 'final'
+            groups: [],
+            knockoutBracket: [],
+            currentGroupStage: 1, // 1-3 for 3 group matches
+            totalGroupMatches: 3,
+            isWorldCupActive: false,
+            seededTeams: ['Australia', 'India', 'England', 'South Africa', 'Sri Lanka', 'West Indies', 'New Zealand', 'Pakistan'],
+            unseededTeams: []
+        };
+        
+        // Initialize World Cup Tournament
+        function initializeWorldCupTournament() {
+            console.log("🏆 INITIALIZING WORLD CUP TOURNAMENT");
+            
+            // Mark as active
+            worldCupState.isWorldCupActive = true;
+            worldCupState.phase = 'groups';
+            worldCupState.currentGroupStage = 1;
+            
+            // CRITICAL FIX: Define proper World Cup teams instead of reusing National Cup teams
+            const seededTeams = ['Australia', 'India', 'England', 'South Africa', 'Sri Lanka', 'West Indies', 'New Zealand', 'Pakistan'];
+            const unseededTeams = ['Bangladesh', 'Kenya', 'Zimbabwe', 'Afghanistan', 'Canada', 'USA', 'Ireland', gameState.teamName];
+            
+            console.log("Seeded teams:", seededTeams);
+            console.log("Unseeded teams:", unseededTeams);
+            
+            // CRITICAL: Generate fresh World Cup AI teams for all teams except the user
+            const worldCupTeamNames = [...seededTeams, ...unseededTeams.filter(team => team !== gameState.teamName)];
+            gameState.aiTeams = worldCupTeamNames.map(teamName => new AITeam(teamName, 'worldcup'));
+            
+            console.log(`Generated ${gameState.aiTeams.length} new World Cup AI teams`);
+            
+            worldCupState.seededTeams = seededTeams;
+            worldCupState.unseededTeams = unseededTeams;
+            
+            console.log("Seeded teams:", seededTeams);
+            console.log("Unseeded teams:", unseededTeams);
+            
+            // Form 4 groups with seeding system
+            worldCupState.groups = [];
+            for (let i = 0; i < 4; i++) {
+                const group = {
+                    name: String.fromCharCode(65 + i), // A, B, C, D
+                    teams: [
+                        seededTeams[i * 2], // First seeded team
+                        seededTeams[i * 2 + 1], // Second seeded team
+                        unseededTeams[i * 2], // First unseeded team
+                        unseededTeams[i * 2 + 1] // Second unseeded team
+                    ],
+                    standings: []
+                };
+                
+                // Initialize group standings
+                group.standings = group.teams.map(teamName => ({
+                    name: teamName,
+                    gamesPlayed: 0,
+                    wins: 0,
+                    losses: 0,
+                    points: 0,
+                    netRunRate: 0,
+                    isPlayer: teamName === gameState.teamName
+                }));
+                
+                worldCupState.groups.push(group);
+                console.log(`Group ${group.name}:`, group.teams);
+            }
+            
+            // Update UI for World Cup
+            updateWorldCupDisplay();
+            
+            // Schedule first group match for player
+            scheduleNextWorldCupMatch();
+        }
+        
+        // Schedule next World Cup match
+        function scheduleNextWorldCupMatch() {
+            if (!worldCupState.isWorldCupActive) return;
+            
+            console.log(`🏏 SCHEDULING WORLD CUP MATCH - Phase: ${worldCupState.phase}, Group Stage: ${worldCupState.currentGroupStage}`);
+            
+            if (worldCupState.phase === 'groups') {
+                scheduleGroupStageMatch();
+            } else {
+                scheduleKnockoutMatch();
+            }
+        }
+        
+        // Schedule group stage match
+        function scheduleGroupStageMatch() {
+            // Find which group the player is in
+            const playerGroup = worldCupState.groups.find(group => 
+                group.teams.includes(gameState.teamName)
+            );
+            
+            if (!playerGroup) {
+                console.error("Player not found in any group!");
+                return;
+            }
+            
+            console.log(`Player is in Group ${playerGroup.name}`);
+            
+            // Generate group stage matches for current stage
+            const groupMatches = generateGroupStageMatches(playerGroup, worldCupState.currentGroupStage);
+            
+            // Find player's match
+            const playerMatch = groupMatches.find(match => 
+                match.team1 === gameState.teamName || match.team2 === gameState.teamName
+            );
+            
+            if (playerMatch) {
+                // Set opponent and match details
+                const opponentName = playerMatch.team1 === gameState.teamName ? playerMatch.team2 : playerMatch.team1;
+                matchState.opponent = gameState.aiTeams.find(team => team.name === opponentName);
+                
+                // World Cup matches are neutral venue (no home advantage)
+                matchState.isHomeGame = false;
+                
+                // Random pitch and weather
+                const pitchTypes = ['Fast Pitch', 'Slow Pitch', 'Bouncy Pitch', 'Spinning Pitch', 'Green Pitch'];
+                matchState.pitchType = pitchTypes[Math.floor(Math.random() * pitchTypes.length)];
+                
+                const weatherConditions = ['Sunny & Clear', 'Partly Cloudy', 'Overcast', 'Hot & Humid'];
+                matchState.weather = weatherConditions[Math.floor(Math.random() * weatherConditions.length)];
+                
+                updateMatchDayReport();
+                generateOpponentXI();
+                
+                console.log(`Group Stage ${worldCupState.currentGroupStage}: ${gameState.teamName} vs ${opponentName}`);
+            }
+        }
+        
+        // Generate group stage matches for a specific stage (1, 2, or 3)
+        function generateGroupStageMatches(group, stage) {
+            const teams = group.teams;
+            let matches = [];
+            
+            // Group stage fixtures - each team plays 3 matches total
+            if (stage === 1) {
+                // Round 1: Team1 vs Team2, Team3 vs Team4
+                matches = [
+                    { team1: teams[0], team2: teams[1] },
+                    { team1: teams[2], team2: teams[3] }
+                ];
+            } else if (stage === 2) {
+                // Round 2: Team1 vs Team3, Team2 vs Team4
+                matches = [
+                    { team1: teams[0], team2: teams[2] },
+                    { team1: teams[1], team2: teams[3] }
+                ];
+            } else if (stage === 3) {
+                // Round 3: Team1 vs Team4, Team2 vs Team3
+                matches = [
+                    { team1: teams[0], team2: teams[3] },
+                    { team1: teams[1], team2: teams[2] }
+                ];
+            }
+            
+            return matches;
+        }
+        
+        // Process World Cup group stage round
+        function processWorldCupGroupRound() {
+            console.log(`🌏 PROCESSING WORLD CUP GROUP STAGE ${worldCupState.currentGroupStage}`);
+            
+            // Process matches for all groups
+            worldCupState.groups.forEach(group => {
+                const groupMatches = generateGroupStageMatches(group, worldCupState.currentGroupStage);
+                
+                // Filter AI vs AI matches only
+                const aiMatches = groupMatches.filter(match => 
+                    match.team1 !== gameState.teamName && match.team2 !== gameState.teamName
+                );
+                
+                // Simulate AI matches
+                aiMatches.forEach(match => {
+                    const team1 = gameState.aiTeams.find(t => t.name === match.team1);
+                    const team2 = gameState.aiTeams.find(t => t.name === match.team2);
+                    
+                    if (team1 && team2) {
+                        const result = simulateDetailedMatch(team1, team2, matchState.pitchType, matchState.weather);
+                        
+                        // Update group standings
+                        updateGroupStandings(group, result);
+                        
+                        // Add to recent results
+                        gameState.recentResults.push(result);
+                    }
+                });
+            });
+            
+            console.log(`Group Stage ${worldCupState.currentGroupStage} AI matches completed`);
+        }
+        
+        // Update group standings
+        function updateGroupStandings(group, result) {
+            const team1Standing = group.standings.find(s => s.name === result.team1);
+            const team2Standing = group.standings.find(s => s.name === result.team2);
+            
+            if (team1Standing && team2Standing) {
+                // Update games played
+                team1Standing.gamesPlayed++;
+                team2Standing.gamesPlayed++;
+                
+                // Update wins/losses/points
+                if (result.winner === result.team1) {
+                    team1Standing.wins++;
+                    team1Standing.points += 2;
+                    team2Standing.losses++;
+                } else if (result.winner === result.team2) {
+                    team2Standing.wins++;
+                    team2Standing.points += 2;
+                    team1Standing.losses++;
+                } else {
+                    // Tie
+                    team1Standing.points += 1;
+                    team2Standing.points += 1;
+                }
+                
+                // Update net run rate (simplified)
+                team1Standing.netRunRate = (team1Standing.wins - team1Standing.losses) + Math.random() * 2 - 1;
+                team2Standing.netRunRate = (team2Standing.wins - team2Standing.losses) + Math.random() * 2 - 1;
+            }
+        }
+        
+        // Check if World Cup group stage is complete
+        function checkWorldCupGroupStageComplete() {
+            if (!worldCupState.isWorldCupActive || worldCupState.phase !== 'groups') return false;
+            
+            const playerGroup = worldCupState.groups.find(group => 
+                group.teams.includes(gameState.teamName)
+            );
+            
+            if (!playerGroup) return false;
+            
+            const playerStanding = playerGroup.standings.find(s => s.isPlayer);
+            return playerStanding && playerStanding.gamesPlayed >= 3;
+        }
+        
+        // Advance to knockout stage
+        function advanceToKnockoutStage() {
+            console.log("🏆 ADVANCING TO WORLD CUP KNOCKOUT STAGE");
+            
+            worldCupState.phase = 'round16';
+            
+            // Get top 2 from each group
+            const qualifiedTeams = [];
+            worldCupState.groups.forEach(group => {
+                // Sort by points, then by net run rate
+                const sortedStandings = [...group.standings].sort((a, b) => {
+                    if (b.points !== a.points) return b.points - a.points;
+                    return b.netRunRate - a.netRunRate;
+                });
+                
+                // Top 2 qualify
+                qualifiedTeams.push(sortedStandings[0], sortedStandings[1]);
+                
+                console.log(`Group ${group.name} qualifiers:`, 
+                    sortedStandings[0].name, sortedStandings[1].name);
+            });
+            
+            // Check if player qualified
+            const playerQualified = qualifiedTeams.some(team => team.isPlayer);
+            
+            if (!playerQualified) {
+                // Player eliminated
+                endWorldCupForPlayer(false);
+                return;
+            }
+            
+            // Create knockout bracket (Round of 16)
+            worldCupState.knockoutBracket = createKnockoutBracket(qualifiedTeams);
+            
+            // Update UI
+            updateWorldCupDisplay();
+            
+            // Schedule knockout match
+            scheduleKnockoutMatch();
+        }
+        
+        // Create knockout bracket
+        function createKnockoutBracket(qualifiedTeams) {
+            // Simple bracket: Group winners vs Group runners-up
+            const groupWinners = [];
+            const groupRunners = [];
+            
+            for (let i = 0; i < qualifiedTeams.length; i += 2) {
+                groupWinners.push(qualifiedTeams[i]);      // 1st place
+                groupRunners.push(qualifiedTeams[i + 1]);  // 2nd place
+            }
+            
+            // Create Round of 16 matches
+            const round16Matches = [
+                { team1: groupWinners[0].name, team2: groupRunners[1].name },
+                { team1: groupWinners[1].name, team2: groupRunners[0].name },
+                { team1: groupWinners[2].name, team2: groupRunners[3].name },
+                { team1: groupWinners[3].name, team2: groupRunners[2].name }
+            ];
+            
+            return {
+                round16: round16Matches,
+                quarters: [],
+                semis: [],
+                final: null
+            };
+        }
+        
+        // Schedule knockout match
+        function scheduleKnockoutMatch() {
+            console.log(`🥊 SCHEDULING KNOCKOUT MATCH - Phase: ${worldCupState.phase}`);
+            
+            let playerMatch = null;
+            
+            if (worldCupState.phase === 'round16') {
+                playerMatch = worldCupState.knockoutBracket.round16.find(match => 
+                    match.team1 === gameState.teamName || match.team2 === gameState.teamName
+                );
+            } else if (worldCupState.phase === 'quarters') {
+                playerMatch = worldCupState.knockoutBracket.quarters.find(match => 
+                    match.team1 === gameState.teamName || match.team2 === gameState.teamName
+                );
+            } else if (worldCupState.phase === 'semis') {
+                playerMatch = worldCupState.knockoutBracket.semis.find(match => 
+                    match.team1 === gameState.teamName || match.team2 === gameState.teamName
+                );
+            } else if (worldCupState.phase === 'final') {
+                playerMatch = worldCupState.knockoutBracket.final;
+            }
+            
+            if (playerMatch) {
+                const opponentName = playerMatch.team1 === gameState.teamName ? playerMatch.team2 : playerMatch.team1;
+                matchState.opponent = gameState.aiTeams.find(team => team.name === opponentName);
+                
+                // Knockout matches are neutral venue
+                matchState.isHomeGame = false;
+                
+                updateMatchDayReport();
+                generateOpponentXI();
+                
+                console.log(`${worldCupState.phase.toUpperCase()}: ${gameState.teamName} vs ${opponentName}`);
+            }
+        }
+        
+        // End World Cup for player
+        function endWorldCupForPlayer(won) {
+            worldCupState.isWorldCupActive = false;
+            
+            if (won) {
+                showWorldCupVictoryModal();
+            } else {
+                showWorldCupEliminationModal();
+            }
+        }
+        
+        // Show World Cup victory modal
+        function showWorldCupVictoryModal() {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+            
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-lg w-full">
+                    <div class="p-6 text-center">
+                        <div class="text-6xl mb-4">🏆</div>
+                        <h2 class="text-3xl font-bold mb-4 text-yellow-600">WORLD CUP CHAMPIONS!</h2>
+                        <p class="text-lg mb-6">Incredible! You have won the World Cup! This is the ultimate achievement in cricket!</p>
+                        
+                        <div class="bg-yellow-50 dark:bg-yellow-900 rounded-lg p-4 mb-6">
+                            <h3 class="font-bold mb-3">🎉 Victory Rewards:</h3>
+                            <p>• $100,000 prize money</p>
+                            <p>• Test World Series unlocked</p>
+                            <p>• Legendary status achieved</p>
+                        </div>
+                        
+                        <div class="flex gap-3 justify-center">
+                            <button onclick="claimWorldCupVictory(); this.closest('div.fixed').remove();" class="px-6 py-3 bg-yellow-600 text-white hover:bg-yellow-700 rounded-lg font-medium">
+                                🏆 Advance to Test Series
+                            </button>
+                            <button onclick="this.closest('div.fixed').remove(); startNewSeason();" class="px-6 py-3 bg-green-600 text-white hover:bg-green-700 rounded-lg font-medium">
+                                🔄 New World Cup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        // Show World Cup elimination modal
+        function showWorldCupEliminationModal() {
+            const phase = worldCupState.phase;
+            const phaseNames = {
+                'groups': 'Group Stage',
+                'round16': 'Round of 16',
+                'quarters': 'Quarter-Finals',
+                'semis': 'Semi-Finals',
+                'final': 'Final'
+            };
+            
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+            
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-lg w-full">
+                    <div class="p-6 text-center">
+                        <div class="text-6xl mb-4">💔</div>
+                        <h2 class="text-2xl font-bold mb-4">World Cup Journey Ends</h2>
+                        <p class="text-lg mb-6">Your World Cup campaign ended in the ${phaseNames[phase]}. Every champion has faced setbacks - learn and come back stronger!</p>
+                        
+                        <div class="bg-blue-50 dark:bg-blue-900 rounded-lg p-4 mb-6">
+                            <h3 class="font-bold mb-3">📈 Experience Gained:</h3>
+                            <p>• World Cup experience valuable for future campaigns</p>
+                            <p>• Players gained international exposure</p>
+                            <p>• Training caps remain at World Cup level</p>
+                        </div>
+                        
+                        <div class="flex gap-3 justify-center">
+                            <button onclick="this.closest('div.fixed').remove(); startNewSeason();" class="px-6 py-3 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium">
+                                🔄 Try World Cup Again
+                            </button>
+                            <button onclick="this.closest('div.fixed').remove();" class="px-6 py-3 bg-gray-500 text-white hover:bg-gray-600 rounded-lg font-medium">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        // Claim World Cup victory
+        function claimWorldCupVictory() {
+            // Award prize money
+            gameState.budget += 100000;
+            document.getElementById('budget').textContent = gameState.budget;
+            
+            // Unlock Test World Series
+            gameState.competitions.test.unlocked = true;
+            document.getElementById('test-btn').disabled = false;
+            document.getElementById('test-btn').classList.remove('bg-gray-300', 'dark:bg-gray-600', 'text-gray-500', 'dark:text-gray-400', 'cursor-not-allowed');
+            document.getElementById('test-btn').classList.add('bg-purple-500', 'text-white');
+            
+            // Mark World Cup as completed
+            gameState.competitions.worldcup.completed = true;
+            
+            // Age players and enhance their abilities
+            gameState.players.forEach(player => {
+                player.age++;
+                // World Cup winners get extra training cap boost
+                Object.keys(player.talentCeiling).forEach(skill => {
+                    const increase = Math.floor(Math.random() * 6) + 5; // 5-10 increase
+                    player.talentCeiling[skill] = Math.min(100, player.talentCeiling[skill] + increase);
+                });
+            });
+            
+            displayPlayers();
+            autoSave();
+            
+            showCustomAlert('🏆 Test World Series unlocked! Your players have reached legendary status with enhanced training potential!');
+        }
+        
+        // Update World Cup display
+        function updateWorldCupDisplay() {
+            if (!worldCupState.isWorldCupActive) return;
+            
+            // Update competition title
+            if (worldCupState.phase === 'groups') {
+                document.getElementById('competition-title').textContent = `World Cup - Group Stage ${worldCupState.currentGroupStage}/3`;
+                document.getElementById('league-title').textContent = 'World Cup Group Standings';
+            } else {
+                const phaseNames = {
+                    'round16': 'Quarter-Finals',
+                    'quarters': 'Semi-Finals', 
+                    'semis': 'Final',
+                    'final': 'World Cup Final'
+                };
+                document.getElementById('competition-title').textContent = `World Cup - ${phaseNames[worldCupState.phase]}`;
+                document.getElementById('league-title').textContent = `World Cup ${phaseNames[worldCupState.phase]} Bracket`;
+            }
+            
+            // Update standings display based on phase
+            if (worldCupState.phase === 'groups') {
+                updateWorldCupGroupStandings();
+            } else if (worldCupState.phase === 'round16') {
+                updateWorldCupQuarterFinalsDisplay();
+            } else if (worldCupState.phase === 'quarters') {
+                updateWorldCupSemiFinalsDisplay();
+            } else if (worldCupState.phase === 'semis' || worldCupState.phase === 'final') {
+                updateWorldCupFinalDisplay();
+            }
+        }
+        
+        // Update World Cup group standings display
+        function updateWorldCupGroupStandings() {
+            const standingsList = document.getElementById('standings-list');
+            
+            let standingsHTML = '';
+            
+            worldCupState.groups.forEach(group => {
+                // Sort group standings
+                const sortedStandings = [...group.standings].sort((a, b) => {
+                    if (b.points !== a.points) return b.points - a.points;
+                    return b.netRunRate - a.netRunRate;
+                });
+                
+                standingsHTML += `
+                    <div class="mb-6">
+                        <h4 class="font-bold text-lg mb-3 text-blue-600 dark:text-blue-400">Group ${group.name}</h4>
+                        
+                        <!-- Group Header -->
+                        <div class="grid grid-cols-6 gap-2 p-3 bg-gray-200 dark:bg-gray-700 text-xs font-medium">
+                            <div>Team</div>
+                            <div class="text-center">P</div>
+                            <div class="text-center">W</div>
+                            <div class="text-center">L</div>
+                            <div class="text-center">Pts</div>
+                            <div class="text-center">NRR</div>
+                        </div>
+                `;
+                
+                sortedStandings.forEach((team, index) => {
+                    const position = index + 1;
+                    const bgColor = team.isPlayer ? 'bg-blue-50 dark:bg-blue-900' : 'bg-white dark:bg-gray-800';
+                    const textColor = team.isPlayer ? 'font-bold text-blue-800 dark:text-blue-200' : '';
+                    const qualificationColor = position <= 2 ? 'border-l-4 border-green-500' : 'border-l-4 border-red-500';
+                    
+                    standingsHTML += `
+                        <div class="grid grid-cols-6 gap-2 p-3 border-b border-gray-200 dark:border-gray-700 ${bgColor} ${qualificationColor}">
+                            <div class="${textColor}">${position}. ${team.name}</div>
+                            <div class="text-center text-xs">${team.gamesPlayed}</div>
+                            <div class="text-center text-xs">${team.wins}</div>
+                            <div class="text-center text-xs">${team.losses}</div>
+                            <div class="text-center text-xs font-medium">${team.points}</div>
+                            <div class="text-center text-xs">${team.netRunRate.toFixed(2)}</div>
+                        </div>
+                    `;
+                });
+                
+                standingsHTML += '</div>';
+            });
+            
+            // Add qualification legend
+            standingsHTML += `
+                <div class="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded">
+                    <h5 class="font-bold mb-2">Qualification Status:</h5>
+                    <div class="flex items-center mb-1">
+                        <div class="w-4 h-4 bg-green-500 mr-2"></div>
+                        <span class="text-sm">Qualified for Quarter-Finals (Top 2)</span>
+                    </div>
+                    <div class="flex items-center">
+                        <div class="w-4 h-4 bg-red-500 mr-2"></div>
+                        <span class="text-sm">Eliminated (Bottom 2)</span>
+                    </div>
+                </div>
+            `;
+            
+            standingsList.innerHTML = standingsHTML;
+        }
+        
+        // Update World Cup Quarter-Finals display
+        function updateWorldCupQuarterFinalsDisplay() {
+            const standingsList = document.getElementById('standings-list');
+            
+            // Get qualified teams from groups
+            const qualifiedTeams = getQualifiedTeams();
+            
+            let bracketsHTML = `
+                <div class="space-y-6">
+                    <div class="text-center mb-6">
+                        <h3 class="text-xl font-bold text-blue-600 dark:text-blue-400">Quarter-Finals Bracket</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">Single elimination - one loss and you're out!</p>
+                    </div>
+            `;
+            
+            // Quarter-Finals format:
+            // QF1: Group A 1st vs Group D 2nd
+            // QF2: Group B 1st vs Group C 2nd
+            // QF3: Group C 1st vs Group B 2nd
+            // QF4: Group D 1st vs Group A 2nd
+            
+            const quarterFinals = [
+                { 
+                    game: 'Game 1', 
+                    team1: qualifiedTeams.A ? qualifiedTeams.A[0] : 'Group A 1st',
+                    team2: qualifiedTeams.D ? qualifiedTeams.D[1] : 'Group D 2nd',
+                    description: 'Group A Winner vs Group D Runner-up'
+                },
+                { 
+                    game: 'Game 2', 
+                    team1: qualifiedTeams.B ? qualifiedTeams.B[0] : 'Group B 1st',
+                    team2: qualifiedTeams.C ? qualifiedTeams.C[1] : 'Group C 2nd',
+                    description: 'Group B Winner vs Group C Runner-up'
+                },
+                { 
+                    game: 'Game 3', 
+                    team1: qualifiedTeams.C ? qualifiedTeams.C[0] : 'Group C 1st',
+                    team2: qualifiedTeams.B ? qualifiedTeams.B[1] : 'Group B 2nd',
+                    description: 'Group C Winner vs Group B Runner-up'
+                },
+                { 
+                    game: 'Game 4', 
+                    team1: qualifiedTeams.D ? qualifiedTeams.D[0] : 'Group D 1st',
+                    team2: qualifiedTeams.A ? qualifiedTeams.A[1] : 'Group A 2nd',
+                    description: 'Group D Winner vs Group A Runner-up'
+                }
+            ];
+            
+            quarterFinals.forEach(qf => {
+                const isPlayerMatch = qf.team1 === gameState.teamName || qf.team2 === gameState.teamName;
+                const highlightClass = isPlayerMatch ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-900' : 'bg-white dark:bg-gray-800';
+                
+                bracketsHTML += `
+                    <div class="p-4 rounded-lg border ${highlightClass}">
+                        <h4 class="font-bold text-lg mb-2">${qf.game}: Quarter-Final</h4>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">${qf.description}</p>
+                        <div class="flex items-center justify-center space-x-4">
+                            <div class="flex-1 text-center p-3 bg-gray-100 dark:bg-gray-700 rounded">
+                                <span class="font-medium">${qf.team1}</span>
+                            </div>
+                            <div class="text-xl font-bold">VS</div>
+                            <div class="flex-1 text-center p-3 bg-gray-100 dark:bg-gray-700 rounded">
+                                <span class="font-medium">${qf.team2}</span>
+                            </div>
+                        </div>
+                        ${isPlayerMatch ? '<div class="text-center mt-2 text-blue-600 dark:text-blue-400 font-medium">🏏 Your Match!</div>' : ''}
+                    </div>
+                `;
+            });
+            
+            bracketsHTML += '</div>';
+            
+            standingsList.innerHTML = bracketsHTML;
+        }
+        
+        // Update World Cup Semi-Finals display
+        function updateWorldCupSemiFinalsDisplay() {
+            const standingsList = document.getElementById('standings-list');
+            
+            let bracketsHTML = `
+                <div class="space-y-6">
+                    <div class="text-center mb-6">
+                        <h3 class="text-xl font-bold text-blue-600 dark:text-blue-400">Semi-Finals Bracket</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">Four teams remain - two steps from glory!</p>
+                    </div>
+            `;
+            
+            // Semi-Finals format:
+            // SF1: QF1 winner vs QF2 winner
+            // SF2: QF3 winner vs QF4 winner
+            
+            const semiFinals = [
+                { 
+                    game: 'Game 5', 
+                    team1: 'Game 1 Winner',
+                    team2: 'Game 2 Winner',
+                    description: 'Semi-Final 1'
+                },
+                { 
+                    game: 'Game 6', 
+                    team1: 'Game 3 Winner',
+                    team2: 'Game 4 Winner',
+                    description: 'Semi-Final 2'
+                }
+            ];
+            
+            // Try to get actual team names if available
+            if (worldCupState.knockoutBracket.semis && worldCupState.knockoutBracket.semis.length > 0) {
+                semiFinals[0].team1 = worldCupState.knockoutBracket.semis[0].team1;
+                semiFinals[0].team2 = worldCupState.knockoutBracket.semis[0].team2;
+            }
+            if (worldCupState.knockoutBracket.semis && worldCupState.knockoutBracket.semis.length > 1) {
+                semiFinals[1].team1 = worldCupState.knockoutBracket.semis[1].team1;
+                semiFinals[1].team2 = worldCupState.knockoutBracket.semis[1].team2;
+            }
+            
+            semiFinals.forEach(sf => {
+                const isPlayerMatch = sf.team1 === gameState.teamName || sf.team2 === gameState.teamName;
+                const highlightClass = isPlayerMatch ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-900' : 'bg-white dark:bg-gray-800';
+                
+                bracketsHTML += `
+                    <div class="p-4 rounded-lg border ${highlightClass}">
+                        <h4 class="font-bold text-lg mb-2">${sf.game}: ${sf.description}</h4>
+                        <div class="flex items-center justify-center space-x-4">
+                            <div class="flex-1 text-center p-3 bg-gray-100 dark:bg-gray-700 rounded">
+                                <span class="font-medium">${sf.team1}</span>
+                            </div>
+                            <div class="text-xl font-bold">VS</div>
+                            <div class="flex-1 text-center p-3 bg-gray-100 dark:bg-gray-700 rounded">
+                                <span class="font-medium">${sf.team2}</span>
+                            </div>
+                        </div>
+                        ${isPlayerMatch ? '<div class="text-center mt-2 text-blue-600 dark:text-blue-400 font-medium">🏏 Your Match!</div>' : ''}
+                    </div>
+                `;
+            });
+            
+            bracketsHTML += '</div>';
+            
+            standingsList.innerHTML = bracketsHTML;
+        }
+        
+        // Update World Cup Final display
+        function updateWorldCupFinalDisplay() {
+            const standingsList = document.getElementById('standings-list');
+            
+            let bracketsHTML = `
+                <div class="space-y-6">
+                    <div class="text-center mb-6">
+                        <h3 class="text-xl font-bold text-yellow-600 dark:text-yellow-400">🏆 WORLD CUP FINAL 🏆</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">The ultimate showdown - one match for eternal glory!</p>
+                    </div>
+            `;
+            
+            // Final format:
+            // Final: SF1 winner vs SF2 winner
+            let finalTeam1 = 'Game 5 Winner';
+            let finalTeam2 = 'Game 6 Winner';
+            
+            // Try to get actual team names if available
+            if (worldCupState.knockoutBracket.final) {
+                finalTeam1 = worldCupState.knockoutBracket.final.team1;
+                finalTeam2 = worldCupState.knockoutBracket.final.team2;
+            }
+            
+            const isPlayerMatch = finalTeam1 === gameState.teamName || finalTeam2 === gameState.teamName;
+            const highlightClass = isPlayerMatch ? 'border-2 border-yellow-500 bg-yellow-50 dark:bg-yellow-900' : 'bg-white dark:bg-gray-800';
+            
+            bracketsHTML += `
+                <div class="p-6 rounded-lg border ${highlightClass}">
+                    <h4 class="font-bold text-2xl mb-4 text-center">Game 7: World Cup Final</h4>
+                    <div class="flex items-center justify-center space-x-6">
+                        <div class="flex-1 text-center p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                            <span class="font-bold text-lg">${finalTeam1}</span>
+                        </div>
+                        <div class="text-3xl font-bold text-yellow-600">VS</div>
+                        <div class="flex-1 text-center p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                            <span class="font-bold text-lg">${finalTeam2}</span>
+                        </div>
+                    </div>
+                    ${isPlayerMatch ? '<div class="text-center mt-4 text-yellow-600 dark:text-yellow-400 font-bold text-lg">🏆 YOU ARE IN THE FINAL! 🏆</div>' : ''}
+                </div>
+            `;
+            
+            // Add tournament path summary
+            bracketsHTML += `
+                <div class="mt-8 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <h5 class="font-bold mb-3">Tournament Path to Final:</h5>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-center">
+                        <div class="p-2 bg-green-100 dark:bg-green-900 rounded">
+                            <div class="font-medium">Group Stage</div>
+                            <div class="text-sm">Top 2 from 4 groups</div>
+                        </div>
+                        <div class="p-2 bg-blue-100 dark:bg-blue-900 rounded">
+                            <div class="font-medium">Quarter-Finals</div>
+                            <div class="text-sm">8 teams → 4 teams</div>
+                        </div>
+                        <div class="p-2 bg-purple-100 dark:bg-purple-900 rounded">
+                            <div class="font-medium">Semi-Finals</div>
+                            <div class="text-sm">4 teams → 2 teams</div>
+                        </div>
+                        <div class="p-2 bg-yellow-100 dark:bg-yellow-900 rounded">
+                            <div class="font-medium">Final</div>
+                            <div class="text-sm">2 teams → 1 Champion</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            bracketsHTML += '</div>';
+            
+            standingsList.innerHTML = bracketsHTML;
+        }
+        
+        // Get qualified teams from groups
+        function getQualifiedTeams() {
+            const qualified = {};
+            
+            worldCupState.groups.forEach(group => {
+                const sortedStandings = [...group.standings].sort((a, b) => {
+                    if (b.points !== a.points) return b.points - a.points;
+                    return b.netRunRate - a.netRunRate;
+                });
+                
+                qualified[group.name] = [
+                    sortedStandings[0].name, // 1st place
+                    sortedStandings[1].name  // 2nd place
+                ];
+            });
+            
+            return qualified;
+        }
+        
         // Generate round-robin matches for a specific round with proper home/away alternation
         function generateRoundRobinMatches(teams, roundNumber) {
             const matches = [];
@@ -3967,11 +4810,11 @@
             };
             
             modal.innerHTML = `
-                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
-                    <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
-                        <h3 class="text-lg font-bold">Financial Report</h3>
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-full max-w-sm sm:max-w-lg md:max-w-2xl lg:max-w-4xl mx-4 max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
+                    <div class="flex justify-between items-center p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-bold pr-2">Financial Report</h3>
                         <button onclick="this.closest('.fixed').remove()" 
-                                class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xl">
+                                class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xl min-w-[32px] h-8 flex items-center justify-center">
                             ✕
                         </button>
                     </div>
@@ -3979,24 +4822,24 @@
                     <!-- Tab Navigation -->
                     <div class="flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                         <button onclick="showFinancialTab('current')" id="current-tab-btn" 
-                                class="financial-tab-btn flex-1 px-4 py-3 text-sm font-medium border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-700">
+                                class="financial-tab-btn flex-1 px-2 sm:px-4 py-3 text-xs sm:text-sm font-medium border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-700">
                             Current Season
                         </button>
                         <button onclick="showFinancialTab('previous')" id="previous-tab-btn" 
-                                class="financial-tab-btn flex-1 px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                class="financial-tab-btn flex-1 px-2 sm:px-4 py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                             Last Season
                         </button>
                         <button onclick="showFinancialTab('summary')" id="summary-tab-btn" 
-                                class="financial-tab-btn flex-1 px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                class="financial-tab-btn flex-1 px-2 sm:px-4 py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                             Summary
                         </button>
                     </div>
                     
-                    <div class="overflow-y-auto max-h-[calc(90vh-140px)]">
+                    <div class="overflow-y-auto" style="max-height: calc(95vh - 160px);">
                         ${generateFinancialTabContent()}
                     </div>
                     
-                    <div class="p-4 border-t border-gray-200 dark:border-gray-700 text-center">
+                    <div class="p-3 sm:p-4 border-t border-gray-200 dark:border-gray-700 text-center">
                         <button onclick="this.closest('.fixed').remove()" 
                                 class="px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 rounded">
                             Close
@@ -4604,34 +5447,97 @@
             document.querySelector('div.fixed').remove();
         }
 
-        // Advance to National Cup
+        // Advance to National Cup or World Cup
         function advanceToNational() {
-            // Enable National Cup
-            gameState.competitions.national.unlocked = true;
-            document.getElementById('national-btn').disabled = false;
-            document.getElementById('national-btn').classList.remove('bg-gray-300', 'dark:bg-gray-600', 'text-gray-500', 'dark:text-gray-400', 'cursor-not-allowed');
-            document.getElementById('national-btn').classList.add('bg-yellow-500', 'text-white');
-            
-            // Age players
-            agePlayers();
-            
-            // Close modal
-            document.querySelector('div.fixed').remove();
-            
-            // Show success message
-            showCustomAlert('National Cup unlocked! Your players have gained experience. Good luck in the next level!');
+            if (gameState.currentCompetition === 'local') {
+                // Enable National Cup
+                gameState.competitions.national.unlocked = true;
+                document.getElementById('national-btn').disabled = false;
+                document.getElementById('national-btn').classList.remove('bg-gray-300', 'dark:bg-gray-600', 'text-gray-500', 'dark:text-gray-400', 'cursor-not-allowed');
+                document.getElementById('national-btn').classList.add('bg-yellow-500', 'text-white');
+                
+                // Age players
+                agePlayers();
+                
+                // CRITICAL FIX: Automatically switch to National Cup and reset game state
+                selectCompetition('national');
+                
+                // CRITICAL FIX: Reset the Start Match button to normal state
+                const startMatchBtn = document.getElementById('start-match-btn');
+                startMatchBtn.textContent = '🏏 Start Match';
+                startMatchBtn.className = 'bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg text-lg font-medium';
+                startMatchBtn.onclick = () => startMatch();
+                
+                // Close modal
+                document.querySelector('div.fixed').remove();
+                
+                // Show success message
+                showCustomAlert('National Cup unlocked! Your players have gained experience. The season has started - good luck in the next level!');
+            }
+            else if (gameState.currentCompetition === 'national') {
+                // Enable World Cup
+                gameState.competitions.worldcup.unlocked = true;
+                document.getElementById('worldcup-btn').disabled = false;
+                document.getElementById('worldcup-btn').classList.remove('bg-gray-300', 'dark:bg-gray-600', 'text-gray-500', 'dark:text-gray-400', 'cursor-not-allowed');
+                document.getElementById('worldcup-btn').classList.add('bg-red-500', 'text-white');
+                
+                // Age players and unlock higher training potential
+                agePlayersWorldCup();
+                
+                // CRITICAL FIX: Automatically switch to World Cup and reset game state
+                selectCompetition('worldcup');
+                
+                // CRITICAL FIX: Reset the Start Match button to normal state
+                const startMatchBtn = document.getElementById('start-match-btn');
+                startMatchBtn.textContent = '🏏 Start Match';
+                startMatchBtn.className = 'bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg text-lg font-medium';
+                startMatchBtn.onclick = () => startMatch();
+                
+                // Close modal
+                document.querySelector('div.fixed').remove();
+                
+                // Show success message
+                showCustomAlert('🏆 World Cup unlocked! Your players have evolved to international level with higher training caps! The tournament has started!');
+            }
         }
 
-        // Unlock National Cup for testing
+        // Age players for World Cup level with enhanced training caps
+        function agePlayersWorldCup() {
+            gameState.players.forEach(player => {
+                player.age++;
+                
+                // CRITICAL: Increase training caps for World Cup level
+                Object.keys(player.talentCeiling).forEach(skill => {
+                    // Increase ceiling by 10-20 points for World Cup level
+                    const increase = Math.floor(Math.random() * 11) + 10; // 10-20 increase
+                    player.talentCeiling[skill] = Math.min(100, player.talentCeiling[skill] + increase);
+                });
+            });
+            displayPlayers();
+        }
+
+        // Unlock National Cup and World Cup for testing
         function unlockNationalCupTester() {
             // Enable National Cup instantly
             gameState.competitions.national.unlocked = true;
             
-            // Update the button appearance
+            // Update the National Cup button appearance
             const nationalBtn = document.getElementById('national-btn');
             nationalBtn.disabled = false;
             nationalBtn.classList.remove('bg-gray-300', 'dark:bg-gray-600', 'text-gray-500', 'dark:text-gray-400', 'cursor-not-allowed');
             nationalBtn.classList.add('bg-yellow-500', 'text-white');
+            
+            // CRITICAL: Also enable World Cup for testing
+            gameState.competitions.worldcup.unlocked = true;
+            
+            // Update the World Cup button appearance
+            const worldcupBtn = document.getElementById('worldcup-btn');
+            worldcupBtn.disabled = false;
+            worldcupBtn.classList.remove('bg-gray-300', 'dark:bg-gray-600', 'text-gray-500', 'dark:text-gray-400', 'cursor-not-allowed');
+            worldcupBtn.classList.add('bg-red-500', 'text-white');
+            
+            // Age players and unlock higher training potential for World Cup testing
+            agePlayersWorldCup();
             
             // CRITICAL FIX: Auto-switch to National Cup to enable market access
             selectCompetition('national');
@@ -4640,7 +5546,7 @@
             autoSave();
             
             // Show confirmation
-            showCustomAlert('National Cup unlocked and activated! The transfer market is now available.');
+            showCustomAlert('🏆 National Cup and World Cup unlocked for testing! World Cup training caps enabled. The transfer market is now available.');
         }
 
         // Start new season
