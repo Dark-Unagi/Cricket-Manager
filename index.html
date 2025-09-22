@@ -969,14 +969,103 @@
             }
         }
 
-        // Generate initial roster
+        // Generate initial roster with bowling balance requirements
         function generateInitialRoster() {
             const roster = [];
             
-            // Generate 6 batters, 5 bowlers, 4 all-rounders
-            for (let i = 0; i < 6; i++) roster.push(new CricketPlayer('Batter'));
-            for (let i = 0; i < 5; i++) roster.push(new CricketPlayer('Bowler'));
-            for (let i = 0; i < 4; i++) roster.push(new CricketPlayer('All-rounder'));
+            // Generate 6 batters first
+            for (let i = 0; i < 6; i++) {
+                roster.push(new CricketPlayer('Batter'));
+            }
+            
+            // Track required bowling types to ensure balance
+            const requiredBowlingTypes = {
+                'Fast': 2,      // Need at least 2 fast bowlers
+                'Swing': 1,     // Need at least 1 swing bowler
+                'Medium': 1,    // Need at least 1 medium bowler
+                'Off-spin': 1,  // Need at least 1 off-spin bowler
+                'Leg-spin': 1   // Need at least 1 leg-spin bowler
+            };
+            
+            const bowlingTypeCounts = {
+                'Fast': 0,
+                'Swing': 0,
+                'Medium': 0,
+                'Off-spin': 0,
+                'Leg-spin': 0
+            };
+            
+            // Generate 5 specialist bowlers with required types
+            for (let i = 0; i < 5; i++) {
+                let bowler = new CricketPlayer('Bowler');
+                
+                // For the first few bowlers, ensure we meet minimum requirements
+                if (i < Object.keys(requiredBowlingTypes).length) {
+                    // Find a required type that we haven't met yet
+                    const neededTypes = Object.keys(requiredBowlingTypes).filter(type => 
+                        bowlingTypeCounts[type] < requiredBowlingTypes[type]
+                    );
+                    
+                    if (neededTypes.length > 0) {
+                        // Assign the first needed type
+                        bowler.bowlingType = neededTypes[0];
+                        bowlingTypeCounts[bowler.bowlingType]++;
+                    }
+                } else {
+                    // For remaining bowlers, track their random types
+                    bowlingTypeCounts[bowler.bowlingType]++;
+                }
+                
+                roster.push(bowler);
+            }
+            
+            // Generate 4 all-rounders with bowling balance considerations
+            for (let i = 0; i < 4; i++) {
+                let allRounder = new CricketPlayer('All-rounder');
+                
+                // Check if we still need any bowling types and assign them to all-rounders
+                const stillNeeded = Object.keys(requiredBowlingTypes).filter(type => 
+                    bowlingTypeCounts[type] < requiredBowlingTypes[type]
+                );
+                
+                if (stillNeeded.length > 0) {
+                    // Assign a needed bowling type to this all-rounder
+                    allRounder.bowlingType = stillNeeded[0];
+                    bowlingTypeCounts[allRounder.bowlingType]++;
+                } else {
+                    // All requirements met, track the random type
+                    bowlingTypeCounts[allRounder.bowlingType]++;
+                }
+                
+                roster.push(allRounder);
+            }
+            
+            // Final check - ensure all minimum requirements are met
+            Object.keys(requiredBowlingTypes).forEach(type => {
+                const needed = requiredBowlingTypes[type];
+                const current = bowlingTypeCounts[type];
+                
+                if (current < needed) {
+                    console.log(`Bowling balance warning: Only ${current} ${type} bowlers (need ${needed})`);
+                    
+                    // Find random bowlers/all-rounders and reassign their types
+                    const bowlingPlayers = roster.filter(p => p.type === 'Bowler' || p.type === 'All-rounder');
+                    const remaining = needed - current;
+                    
+                    for (let i = 0; i < remaining && i < bowlingPlayers.length; i++) {
+                        // Find a player whose type can be changed
+                        const player = bowlingPlayers[i];
+                        if (bowlingTypeCounts[player.bowlingType] > requiredBowlingTypes[player.bowlingType]) {
+                            // Safe to change this player's type
+                            bowlingTypeCounts[player.bowlingType]--;
+                            player.bowlingType = type;
+                            bowlingTypeCounts[type]++;
+                        }
+                    }
+                }
+            });
+            
+            console.log('Final bowling type distribution:', bowlingTypeCounts);
             
             return roster;
         }
@@ -3666,6 +3755,9 @@
                 const striker = battingTeam[this.striker];
                 const bowler = this.currentBowler;
                 
+                // CRITICAL: Get batting strategy and apply captain's choice logic
+                const battingStrategy = this.getBattingStrategy(battingTeam);
+                
                 // Calculate realistic base probabilities (totaling ~1.0)
                 let dotProb = 0.45;        // 45% - most common outcome
                 let singleProb = 0.30;     // 30% - primary scoring method
@@ -3677,6 +3769,18 @@
                 let wideProb = 0.015;      // 1.5% - bowling error
                 let noBallProb = 0.005;    // 0.5% - rare bowling error
                 let byeProb = 0.01;        // 1% - fielding/keeping error
+                
+                // CRITICAL: Apply batting strategy modifiers
+                const strategyModifiers = this.getBattingStrategyModifiers(battingStrategy, battingTeam);
+                
+                // Apply modifiers to probabilities
+                dotProb *= strategyModifiers.dotMultiplier;
+                singleProb *= strategyModifiers.singleMultiplier;
+                doubleProb *= strategyModifiers.doubleMultiplier;
+                tripleProb *= strategyModifiers.tripleMultiplier;
+                fourProb *= strategyModifiers.fourMultiplier;
+                sixProb *= strategyModifiers.sixMultiplier;
+                wicketProb *= strategyModifiers.wicketMultiplier;
                 
                 // Player skill factors
                 const strikerSkill = this.calculateBattingSkill(striker);
@@ -4222,6 +4326,167 @@
                     margin: margin
                 };
             }
+            
+            // Get batting strategy for current match
+            getBattingStrategy(battingTeam) {
+                // Determine current batting strategy based on user selection and captain logic
+                const strategy = document.getElementById('batting-strategy').value;
+                
+                if (strategy === 'captain-choice') {
+                    // Captain makes decision based on match situation and captaincy skill
+                    return this.captainChooseBattingStrategy(battingTeam);
+                } else {
+                    return strategy;
+                }
+            }
+            
+            // Captain chooses batting strategy based on match situation and skill
+            captainChooseBattingStrategy(battingTeam) {
+                // Find captain
+                const captain = battingTeam.find(player => player.isCaptain);
+                if (!captain || !captain.trainingSkills) {
+                    // No captain or no training skills - random choice
+                    const strategies = ['conservative', 'aggressive', 'balanced'];
+                    return strategies[Math.floor(Math.random() * strategies.length)];
+                }
+                
+                // Captain's decision making based on captaincy skill (0-100)
+                const captaincySkill = captain.trainingSkills.captaincy || 20;
+                const skillFactor = captaincySkill / 100; // 0.0 to 1.0
+                
+                // Analyze match situation
+                const matchSituation = this.analyzeMatchSituation();
+                
+                let recommendedStrategy = 'balanced'; // Default fallback
+                
+                // SMART CAPTAIN DECISION MAKING
+                if (this.innings === 1) {
+                    // First innings logic
+                    if (this.currentOver <= 10) {
+                        // Powerplay - good captains are more aggressive
+                        recommendedStrategy = skillFactor > 0.6 ? 'aggressive' : 'balanced';
+                    } else if (this.currentOver <= 35) {
+                        // Middle overs - steady approach
+                        recommendedStrategy = 'balanced';
+                    } else {
+                        // Death overs - go for runs
+                        recommendedStrategy = skillFactor > 0.5 ? 'aggressive' : 'balanced';
+                    }
+                } else {
+                    // Second innings - chasing
+                    const target = this.getTarget();
+                    const needed = target - this.currentScore.runs;
+                    const ballsLeft = (this.oversReduced - this.currentOver + 1) * 6;
+                    
+                    if (ballsLeft <= 0) {
+                        recommendedStrategy = 'aggressive'; // Last resort
+                    } else {
+                        const requiredRate = needed / (ballsLeft / 6);
+                        const currentRate = this.currentScore.runs / Math.max(this.currentOver - 1, 1);
+                        
+                        // Better captains make more nuanced decisions
+                        if (skillFactor > 0.7) {
+                            // Skilled captain - detailed analysis
+                            if (requiredRate > currentRate + 3) {
+                                recommendedStrategy = 'aggressive'; // Need to catch up
+                            } else if (requiredRate < currentRate - 1) {
+                                recommendedStrategy = 'conservative'; // Ahead of required rate
+                            } else {
+                                recommendedStrategy = 'balanced'; // On track
+                            }
+                        } else if (skillFactor > 0.4) {
+                            // Average captain - basic analysis
+                            if (requiredRate > currentRate + 2) {
+                                recommendedStrategy = 'aggressive';
+                            } else {
+                                recommendedStrategy = 'balanced';
+                            }
+                        } else {
+                            // Poor captain - often makes wrong choices
+                            const randomChoice = Math.random();
+                            if (randomChoice < 0.4) {
+                                recommendedStrategy = 'aggressive'; // Often too aggressive
+                            } else if (randomChoice < 0.7) {
+                                recommendedStrategy = 'balanced';
+                            } else {
+                                recommendedStrategy = 'conservative'; // Sometimes too conservative
+                            }
+                        }
+                    }
+                }
+                
+                // Factor in wickets lost - good captains adjust for team situation
+                if (skillFactor > 0.6) {
+                    if (this.currentScore.wickets >= 6) {
+                        // Many wickets lost - be more conservative
+                        if (recommendedStrategy === 'aggressive') recommendedStrategy = 'balanced';
+                        else if (recommendedStrategy === 'balanced') recommendedStrategy = 'conservative';
+                    } else if (this.currentScore.wickets <= 2) {
+                        // Few wickets lost - can be more aggressive
+                        if (recommendedStrategy === 'conservative') recommendedStrategy = 'balanced';
+                        else if (recommendedStrategy === 'balanced' && this.innings === 2) recommendedStrategy = 'aggressive';
+                    }
+                }
+                
+                // Add some randomness for lower-skilled captains
+                if (skillFactor < 0.5 && Math.random() < 0.3) {
+                    const alternatives = ['conservative', 'aggressive', 'balanced'].filter(s => s !== recommendedStrategy);
+                    recommendedStrategy = alternatives[Math.floor(Math.random() * alternatives.length)];
+                }
+                
+                return recommendedStrategy;
+            }
+            
+            // Analyze current match situation
+            analyzeMatchSituation() {
+                return {
+                    overs: this.currentOver,
+                    wickets: this.currentScore.wickets,
+                    runs: this.currentScore.runs,
+                    innings: this.innings,
+                    target: this.innings === 2 ? this.getTarget() : null,
+                    runRate: this.currentScore.runs / Math.max(this.currentOver - 1, 1)
+                };
+            }
+            
+            // Get batting strategy modifiers based on chosen strategy
+            getBattingStrategyModifiers(strategy, battingTeam) {
+                switch (strategy) {
+                    case 'conservative':
+                        return {
+                            dotMultiplier: 1.3,     // More dot balls
+                            singleMultiplier: 1.4,  // More singles
+                            doubleMultiplier: 1.1,  // Slightly more running
+                            tripleMultiplier: 0.8,  // Fewer risky runs
+                            fourMultiplier: 0.7,    // Fewer boundaries
+                            sixMultiplier: 0.4,     // Much fewer sixes
+                            wicketMultiplier: 0.7   // Fewer wickets lost
+                        };
+                    
+                    case 'aggressive':
+                        return {
+                            dotMultiplier: 0.7,     // Fewer dot balls
+                            singleMultiplier: 0.8,  // Fewer singles
+                            doubleMultiplier: 1.1,  // More running
+                            tripleMultiplier: 1.3,  // More risky runs
+                            fourMultiplier: 1.5,    // More boundaries
+                            sixMultiplier: 2.0,     // Much more sixes
+                            wicketMultiplier: 1.4   // More wickets lost
+                        };
+                    
+                    case 'balanced':
+                    default:
+                        return {
+                            dotMultiplier: 1.0,
+                            singleMultiplier: 1.0,
+                            doubleMultiplier: 1.0,
+                            tripleMultiplier: 1.0,
+                            fourMultiplier: 1.0,
+                            sixMultiplier: 1.0,
+                            wicketMultiplier: 1.0
+                        };
+                }
+            }
         }
 
         // Enhanced match simulation that processes entire league round
@@ -4546,6 +4811,10 @@
             const commentary = document.getElementById('match-commentary');
             const result = currentMatch.getMatchResult();
             
+            // CRITICAL: Check for injuries for both teams after match
+            checkForInjuries(currentMatch.team1Players, currentMatch.team1.name || gameState.teamName);
+            checkForInjuries(currentMatch.team2Players, currentMatch.team2.name || gameState.teamName);
+            
             // CRITICAL FIX: Determine batting order for proper result format
             const battingFirstTeam = currentMatch.battingFirst.name || gameState.teamName;
             const battingSecondTeam = currentMatch.fieldingFirst.name || gameState.teamName;
@@ -4695,6 +4964,11 @@
             // CRITICAL: Update scouting timing after each match
             updateScoutingTiming();
             
+            // CRITICAL: Display pending training notifications 1 second after match UI resets
+            setTimeout(() => {
+                displayPendingTrainingNotifications();
+            }, 6000); // 6 seconds (match UI resets at 5 seconds, then 1 second delay)
+            
             // FAN BASE AND INCOME SYSTEM INTEGRATION
             
             // Check if any player scored 100+ runs for fan base bonus
@@ -4748,6 +5022,9 @@
                 return;
             }
             
+            // CRITICAL: Update injury recovery after each match
+            updateInjuryRecovery();
+            
             // Schedule next match
             matchState.roundNumber++;
             scheduleNextMatch();
@@ -4759,6 +5036,68 @@
                 document.getElementById('live-match-details').style.display = 'none';
                 currentMatch = null;
             }, 5000);
+        }
+        
+        // Check for injuries for both teams after match
+        function checkForInjuries(teamPlayers, teamName) {
+            teamPlayers.forEach(player => {
+                // Small chance for injury (2% base chance per player per match)
+                const injuryChance = 0.02;
+                
+                // Weather can increase injury risk
+                let adjustedChance = injuryChance;
+                if (matchState.weather === 'Hot & Humid') {
+                    adjustedChance = injuryChance * 1.5; // 3% chance in hot weather
+                }
+                
+                if (Math.random() < adjustedChance) {
+                    // Player gets injured
+                    player.isInjured = true;
+                    player.injuryDaysLeft = Math.floor(Math.random() * 3) + 2; // 2-4 matches
+                    
+                    console.log(`🏥 INJURY: ${player.name} from ${teamName} injured for ${player.injuryDaysLeft} matches`);
+                    
+                    // If this is a player team player, remove from current XI
+                    if (teamName === gameState.teamName && matchState.selectedXI.includes(player.name)) {
+                        matchState.selectedXI = matchState.selectedXI.filter(name => name !== player.name);
+                        updatePlayerSelector();
+                        displayYourXI();
+                        
+                        showCustomAlert(`⚠️ ${player.name} has been injured and removed from your XI! They will be out for ${player.injuryDaysLeft} matches.`);
+                    }
+                }
+            });
+        }
+        
+        // Update injury recovery after each match
+        function updateInjuryRecovery() {
+            let anyRecoveries = false;
+            
+            gameState.players.forEach(player => {
+                if (player.isInjured && player.injuryDaysLeft > 0) {
+                    player.injuryDaysLeft--;
+                    
+                    if (player.injuryDaysLeft <= 0) {
+                        player.isInjured = false;
+                        player.injuryDaysLeft = 0;
+                        anyRecoveries = true;
+                        
+                        console.log(`✅ RECOVERY: ${player.name} has recovered from injury`);
+                        
+                        // Show recovery notification
+                        setTimeout(() => {
+                            showCustomAlert(`🎉 ${player.name} has recovered from injury and is available for selection!`);
+                        }, 1000);
+                    }
+                }
+            });
+            
+            // Update UI if any players recovered
+            if (anyRecoveries) {
+                displayPlayers();
+                updatePlayerSelector();
+                populateTrainingSelector();
+            }
         }
 
         // FINANCIAL TRACKING FUNCTIONS
@@ -6233,7 +6572,7 @@
             console.log("=== TRAINING QUEUE PROCESSING COMPLETE ===");
         }
         
-        // Show training completion notification
+        // Show training completion notification with delayed timing
         function showTrainingCompleteNotification(player, skillName, improvement) {
             const skillNames = {
                 'battingDefense': 'Batting Defense',
@@ -6248,27 +6587,19 @@
                 'captaincy': 'Captaincy'
             };
             
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-            modal.innerHTML = `
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-sm w-full mx-4">
-                    <div class="text-center">
-                        <div class="text-4xl mb-4">🎯</div>
-                        <h3 class="text-lg font-bold mb-4">Training Complete!</h3>
-                        <p class="mb-2"><strong>${player.name}</strong></p>
-                        <p class="mb-2">${skillNames[skillName]} improved by <strong>+${improvement}</strong> points!</p>
-                        <p class="text-sm text-gray-600 dark:text-gray-400">
-                            This improvement will help in future matches.
-                        </p>
-                    </div>
-                    <div class="flex justify-center mt-6">
-                        <button class="px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 rounded" onclick="this.closest('.fixed').remove()">
-                            Great!
-                        </button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
+            // CRITICAL: Store notification for delayed display instead of showing immediately
+            const notification = {
+                player: player,
+                skillName: skillName,
+                improvement: improvement,
+                skillDisplayName: skillNames[skillName]
+            };
+            
+            // Add to pending notifications queue
+            if (!window.pendingTrainingNotifications) {
+                window.pendingTrainingNotifications = [];
+            }
+            window.pendingTrainingNotifications.push(notification);
             
             // CRITICAL FIX: Refresh training UI if this player is currently selected
             const currentSelector = document.getElementById('training-player-selector');
@@ -6280,14 +6611,69 @@
                     showTrainingPanel(player);
                 }
             }
+        }
+        
+        // NEW: Display pending training notifications after match completion
+        function displayPendingTrainingNotifications() {
+            if (!window.pendingTrainingNotifications || window.pendingTrainingNotifications.length === 0) {
+                return;
+            }
             
-            // Auto-close after 5 seconds
+            // Show the first notification and remove it from queue
+            const notification = window.pendingTrainingNotifications.shift();
+            showTrainingNotificationModal(notification);
+        }
+        
+        // NEW: Actually show the training notification modal
+        function showTrainingNotificationModal(notification) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-sm w-full mx-4">
+                    <div class="text-center">
+                        <div class="text-4xl mb-4">🎯</div>
+                        <h3 class="text-lg font-bold mb-4">Training Complete!</h3>
+                        <p class="mb-2"><strong>${notification.player.name}</strong></p>
+                        <p class="mb-2">${notification.skillDisplayName} improved by <strong>+${notification.improvement}</strong> points!</p>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            This improvement will help in future matches.
+                        </p>
+                    </div>
+                    <div class="flex justify-center mt-6 space-x-3">
+                        <button class="px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 rounded" onclick="dismissTrainingModal(); ${window.pendingTrainingNotifications && window.pendingTrainingNotifications.length > 0 ? 'displayPendingTrainingNotifications();' : ''}">
+                            ${window.pendingTrainingNotifications && window.pendingTrainingNotifications.length > 0 ? 'Next' : 'Great!'}
+                        </button>
+                        ${window.pendingTrainingNotifications && window.pendingTrainingNotifications.length > 0 ? 
+                        '<button class="px-4 py-2 bg-gray-500 text-white hover:bg-gray-600 rounded" onclick="dismissAllTrainingModals()">Skip All</button>' : ''}
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // Auto-close after 8 seconds
             setTimeout(() => {
                 const stillExists = document.body.contains(modal);
                 if (stillExists) {
                     modal.remove();
+                    // Show next notification if any remain
+                    if (window.pendingTrainingNotifications && window.pendingTrainingNotifications.length > 0) {
+                        displayPendingTrainingNotifications();
+                    }
                 }
-            }, 5000);
+            }, 8000);
+        }
+        
+        // Dismiss current training modal
+        function dismissTrainingModal() {
+            const modal = document.querySelector('.fixed');
+            if (modal) modal.remove();
+        }
+        
+        // Dismiss all training modals
+        function dismissAllTrainingModals() {
+            window.pendingTrainingNotifications = [];
+            const modal = document.querySelector('.fixed');
+            if (modal) modal.remove();
         }
         
         // Initialize training system on load
